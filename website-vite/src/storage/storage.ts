@@ -1,0 +1,87 @@
+import type { UserProfile } from '@life-stock/core';
+import { migrate, withVersion } from '@life-stock/core';
+import { storage } from './adapter';
+
+const STORAGE_KEY = 'lifeStockUser';
+const DISCLAIMER_KEY = 'disclaimerConfirmed';
+const PRIVACY_KEY = 'privacyConsent'; // F12 隐私授权
+
+// ============ 用户数据存储 ============
+
+export function saveUser(user: UserProfile): void {
+  storage.set(STORAGE_KEY, JSON.stringify(user));
+}
+
+export function loadUser(): UserProfile | null {
+  const saved = storage.get(STORAGE_KEY);
+  if (!saved) return null;
+  try {
+    const raw = JSON.parse(saved) as UserProfile & { version?: string };
+    // 版本迁移
+    const user = migrate(raw, raw.version);
+    user.investments = (user.investments || []).map((i) => ({ ...i, date: new Date(i.date as unknown as string) }));
+    if (user.setbacks) {
+      user.setbacks = user.setbacks.map((s) => ({ ...s, date: new Date(s.date as unknown as string) }));
+    }
+    return user;
+  } catch {
+    return null;
+  }
+}
+
+export function clearUser(): void {
+  storage.remove(STORAGE_KEY);
+}
+
+// ============ F12 隐私授权与数据删除 ============
+
+export function isPrivacyConsented(): boolean {
+  return storage.get(PRIVACY_KEY) === '1';
+}
+
+export function setPrivacyConsent(): void {
+  storage.set(PRIVACY_KEY, '1');
+}
+
+/** 删除全部数据（本地 + 免责声明 + 隐私授权） */
+export function deleteAllData(): void {
+  storage.clear();
+}
+
+// ============ 免责声明 ============
+
+export function isDisclaimerConfirmed(): boolean {
+  return storage.get(DISCLAIMER_KEY) === '1';
+}
+
+export function confirmDisclaimer(): void {
+  storage.set(DISCLAIMER_KEY, '1');
+}
+
+// ============ JSON 导入/导出 ============
+
+export function exportUser(user: UserProfile): void {
+  // v1.2：导出附加版本号与免责声明
+  const data = {
+    ...withVersion(user),
+    exportTime: new Date().toISOString(),
+  };
+  const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `life-index-${user.age}岁-${new Date().toISOString().slice(0, 10)}.json`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+export function importUser(json: string): UserProfile {
+  const data = JSON.parse(json) as UserProfile & { version?: string };
+  if (!data.age || !data.history) throw new Error('文件格式不正确');
+  const user = migrate(data, data.version);
+  user.investments = (user.investments || []).map((i) => ({ ...i, date: new Date(i.date as unknown as string) }));
+  if (user.setbacks) {
+    user.setbacks = user.setbacks.map((s) => ({ ...s, date: new Date(s.date as unknown as string) }));
+  }
+  return user;
+}
