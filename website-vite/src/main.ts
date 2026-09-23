@@ -70,40 +70,40 @@ let onboardingData: Partial<UserProfile> = {};
 
 // ============ 问卷步骤 ============
 const onboardingSteps = [
-  { title: '第1步：你今年多大？', desc: '年龄决定了你的人生走势图长度和当前阶段', field: 'age', type: 'number', placeholder: '请输入年龄（1-100）' },
-  { title: '第2步：你来自哪里？', desc: '不同地区的教育投入差异较大', field: 'region', type: 'select', options: [
+  { title: '第1步：你今年多大？', desc: '年龄帮我们找到你在人生曲线上的位置', field: 'age', type: 'number', placeholder: '请输入年龄（1-100）' },
+  { title: '第2步：你来自哪里？', desc: '不同城市的成长成本不太一样', field: 'region', type: 'select', options: [
     { value: 'tier1', label: '一线城市（北上广深）' },
     { value: 'new_tier1', label: '新一线城市' },
     { value: 'tier2', label: '二线城市' },
     { value: 'tier3', label: '三线及以下' },
   ]},
-  { title: '第3步：家庭条件？', desc: '这会影响教育投入估算', field: 'income', type: 'select', options: [
+  { title: '第3步：家庭条件？', desc: '家庭支持也是成长资本的一部分', field: 'income', type: 'select', options: [
     { value: 'low', label: '困难' }, { value: 'below_avg', label: '偏低' },
     { value: 'avg', label: '一般' }, { value: 'above_avg', label: '较好' }, { value: 'high', label: '富裕' },
   ]},
-  { title: '第4步：你的学历？', desc: '学历是终身资产，不折旧', field: 'education', type: 'select', options: [
+  { title: '第4步：你的学历？', desc: '学历是会跟你一辈子的资产', field: 'education', type: 'select', options: [
     { value: 'primary', label: '小学' }, { value: 'junior', label: '初中' },
     { value: 'senior', label: '高中' }, { value: 'college', label: '大专' },
     { value: 'bachelor', label: '本科' }, { value: 'master', label: '硕士及以上' },
   ]},
-  { title: '第5步：你的年收入？', desc: '这直接决定你的年度成长力（EPS），请填税前年薪', field: 'annualIncome', type: 'number', placeholder: '请输入税前年收入（元），如 120000' },
-  { title: '第6步：收入增长趋势？', desc: '持续增长会推高成长系数', field: 'annualIncomeGrowth', type: 'select', options: [
+  { title: '第5步：你的年收入？', desc: '收入是成长力的一部分，填税前年薪就好', field: 'annualIncome', type: 'number', placeholder: '请输入税前年收入（元），如 120000' },
+  { title: '第6步：收入增长趋势？', desc: '持续增长会让成长更有动力', field: 'annualIncomeGrowth', type: 'select', options: [
     { value: '0', label: '下降' }, { value: '0.05', label: '稳定' },
     { value: '0.1', label: '稳步增长' }, { value: '0.2', label: '快速增长' },
   ]},
-  { title: '第7步：每周学习时长？', desc: '持续学习是推动指数上涨的核心动力', field: 'studyHours', type: 'select', options: [
+  { title: '第7步：每周学习时长？', desc: '学习是给自己最好的投资', field: 'studyHours', type: 'select', options: [
     { value: '0', label: '几乎不学习' }, { value: '2', label: '约2小时' },
     { value: '5', label: '约5小时' }, { value: '10', label: '10小时以上' },
   ]},
-  { title: '第8步：健康状况？', desc: '健康是质量系数的核心', field: 'healthScore', type: 'select', options: [
+  { title: '第8步：健康状况？', desc: '健康是一切的底座', field: 'healthScore', type: 'select', options: [
     { value: '40', label: '较差' }, { value: '60', label: '一般' },
     { value: '75', label: '良好' }, { value: '90', label: '优秀' },
   ]},
-  { title: '第9步：负债情况？', desc: '负债会产生风险折扣，拉低指数', field: 'debtRatio', type: 'select', options: [
+  { title: '第9步：负债情况？', desc: '适度负债没关系，留意它的影响就好', field: 'debtRatio', type: 'select', options: [
     { value: '0', label: '无负债' }, { value: '0.1', label: '少量负债' },
     { value: '0.3', label: '中等负债' }, { value: '0.6', label: '高负债' },
   ]},
-  { title: '第10步：人生节点（可多选）', desc: '已达成的节点会推高指数', field: 'milestones', type: 'multi', options: [
+  { title: '第10步：人生节点（可多选）', desc: '已达成的节点都是成长的里程碑', field: 'milestones', type: 'multi', options: [
     { value: 'hasJob', label: '💼 有工作' }, { value: 'salaryRaised', label: '💰 涨过薪' },
     { value: 'hasLicense', label: '🚗 有驾照' }, { value: 'marathon', label: '🏃 跑过马拉松' },
     { value: 'married', label: '💍 已婚' }, { value: 'hasHouse', label: '🏠 有房' },
