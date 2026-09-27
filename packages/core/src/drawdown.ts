@@ -47,7 +47,7 @@ export function calcDrawdown(kline: KlinePoint[], currentPrice: number): Drawdow
     suggestions.push('阶段性回落，可复盘近期是否有停滞期');
     suggestions.push('健康与学习时长对成长系数影响较大');
   } else {
-    suggestions.push('回撤较大，建议认真复盘近期生活变化');
+    suggestions.push('回落幅度较大，建议认真复盘近期生活变化');
     suggestions.push('可在「记录挫折」中标记事件，帮助归因');
   }
 

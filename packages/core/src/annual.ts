@@ -67,9 +67,9 @@ export function generateAnnualReport(user: UserProfile, kline: KlinePoint[]): An
   // 总结
   let summary: string;
   if (changePoints > 0) {
-    summary = `这一年，你的人生指数上升了 ${Math.round(changePoints)} 点。每一笔投入、每一次觉察，都在累积成看得见的成长。`;
+    summary = `这一年，你的成长指数上升了 ${Math.round(changePoints)} 点。每一笔投入、每一次觉察，都在累积成看得见的成长。`;
   } else if (changePoints < 0) {
-    summary = `这一年有些起伏，指数回落了 ${Math.round(Math.abs(changePoints))} 点。回撤不是失败，是重新认识自己的机会。`;
+    summary = `这一年有些起伏，指数回落了 ${Math.round(Math.abs(changePoints))} 点。回落不是失败，是重新认识自己的机会。`;
   } else {
     summary = '这一年平稳度过，成长在潜移默化中发生。';
   }

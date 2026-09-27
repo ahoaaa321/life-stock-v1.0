@@ -4,7 +4,8 @@ import { storage } from './adapter';
 
 const STORAGE_KEY = 'lifeStockUser';
 const DISCLAIMER_KEY = 'disclaimerConfirmed';
-const PRIVACY_KEY = 'privacyConsent'; // F12 隐私授权
+const PRIVACY_KEY = 'privacyConsent'; // F12 隐私授权（基础本地数据）
+const SENSITIVE_KEY = 'sensitiveConsent'; // 敏感信息（收入、负债、金额等）单独同意
 
 // ============ 用户数据存储 ============
 
@@ -41,6 +42,16 @@ export function isPrivacyConsented(): boolean {
 
 export function setPrivacyConsent(): void {
   storage.set(PRIVACY_KEY, '1');
+}
+
+/** 是否已单独同意收集敏感信息（收入、负债、具体金额等） */
+export function isSensitiveConsented(): boolean {
+  return storage.get(SENSITIVE_KEY) === '1';
+}
+
+export function setSensitiveConsent(consented: boolean): void {
+  if (consented) storage.set(SENSITIVE_KEY, '1');
+  else storage.remove(SENSITIVE_KEY);
 }
 
 /** 删除全部数据（本地 + 免责声明 + 隐私授权） */

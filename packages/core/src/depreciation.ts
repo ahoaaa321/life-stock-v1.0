@@ -51,14 +51,14 @@ export function forecastDepreciation(
 
   const suggestions: string[] = [];
   if (annualInvest === 0) {
-    suggestions.push('未设定年度新增投入，资本会持续折旧');
+    suggestions.push('未设定年度新增投入，成长值会随时间自然衰减');
   }
   if (bv10y < bv * 0.5) {
-    suggestions.push('按当前节奏，10 年后资本可能缩水过半');
+    suggestions.push('按当前节奏，10 年后成长积累可能缩水过半');
     suggestions.push('建议增加年度投入，或提升投入质量');
   }
   if (bv5y > bv) {
-    suggestions.push('按当前投入节奏，5 年后资本仍在增长');
+    suggestions.push('按当前投入节奏，5 年后成长积累仍在增长');
   }
   suggestions.push('健康与技能类投入折旧较慢，优先配置');
 

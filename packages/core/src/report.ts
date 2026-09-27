@@ -74,9 +74,9 @@ export function generateMonthlyReport(
     highlights.push(`本月记录了 ${investCount} 笔自我投入`);
   }
   if (changePoints > 0) {
-    highlights.push(`人生指数上升 ${Math.round(changePoints)} 点`);
+    highlights.push(`成长指数上升 ${Math.round(changePoints)} 点`);
   } else if (changePoints < 0) {
-    highlights.push('本月指数有所回落，可查看回撤复盘');
+    highlights.push('本月指数有所回落，可查看回落复盘');
   }
   const milestones = (user as any)._milestones || [];
   if (milestones > 0) {
@@ -95,7 +95,7 @@ export function generateMonthlyReport(
     suggestions.push('近期情绪偏低，关注健康与休息');
   }
   if (suggestions.length === 0) {
-    suggestions.push('保持当前节奏，继续积累成长资本');
+    suggestions.push('保持当前节奏，继续积累成长值');
   }
 
   return {

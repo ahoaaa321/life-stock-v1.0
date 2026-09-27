@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
-    <title>人生即股票 - 让每一笔自我投资都看得见回报</title>
+    <title>今日宜长进 · 成长指数手账</title>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
@@ -92,29 +92,34 @@
         .toast { position: fixed; bottom: 30px; left: 50%; transform: translateX(-50%); background: #1a1f3a; padding: 12px 24px; border-radius: 10px; z-index: 200; border: 1px solid var(--accent-blue); }
         footer { text-align: center; padding: 40px 20px; color: var(--text-muted); font-size: 13px; }
     </style>
-  <script type="module" crossorigin src="./assets/index-CYGVteU0.js"></script>
+  <script type="module" crossorigin src="./assets/index-0Sod28_F.js"></script>
 </head>
 <body>
     <!-- 首页 -->
     <div class="landing" id="landing">
         <div class="container">
             <div class="hero">
-                <h1>人生即股票</h1>
-                <p class="subtitle">你不必和别人比，也不必焦虑。<br>在这里，每一次学习、每一次好好吃饭、每一次认真生活，都会被温柔地记录下来。</p>
-                <button class="btn-primary" onclick="startOnboarding()">开始记录我的成长</button>
+                <div style="font-size:15px;letter-spacing:6px;color:var(--text-muted);margin-bottom:14px;">成长指数手账</div>
+                <h1>今日宜长进</h1>
+                <p class="subtitle">今日<strong style="color:var(--accent-blue);">宜投入</strong>，忌内耗。<br>每一次学习、每一次好好吃饭、每一次认真生活，都值得被温柔地记下来。</p>
+                <button class="btn-primary" onclick="startOnboarding()">翻开我的成长手账</button>
             </div>
             <div class="features">
-                <div class="feature" onclick="startOnboarding()"><div class="feature-icon">🎯</div><h3>十步认识自己</h3><p>关于年龄、家庭、健康、学习的几个简单问题，帮你画一张属于自己的成长画像</p></div>
-                <div class="feature" onclick="startOnboarding()"><div class="feature-icon">📈</div><h3>看见成长轨迹</h3><p>那些看似不起眼的日常投入，汇聚起来就是一条向上的曲线——你比想象中更努力</p></div>
+                <div class="feature" onclick="startOnboarding()"><div class="feature-icon">🌅</div><h3>十笔画出自己</h3><p>关于年龄、家庭、健康、学习的几个简单问题，帮你画一张属于自己的成长画像</p></div>
+                <div class="feature" onclick="startOnboarding()"><div class="feature-icon">🌱</div><h3>看见长进曲线</h3><p>那些看似不起眼的日常投入，汇聚起来就是一条向上的山坡——你比想象中更努力</p></div>
                 <div class="feature" onclick="startOnboarding()"><div class="feature-icon">🏆</div><h3>每一步都算数</h3><p>从拿到第一份工作到学会一项新技能，人生的每个节点，都是值得庆祝的里程碑</p></div>
-                <div class="feature" onclick="startOnboarding()"><div class="feature-icon">📋</div><h3>明明白白成长</h3><p>每一个数字都有迹可循。你可以校准、追问、调整——这是你的指数，你说了算</p></div>
+                <div class="feature" onclick="startOnboarding()"><div class="feature-icon">📋</div><h3>明明白白成长</h3><p>每一个数字都有迹可循。你可以校准、追问、调整——这是你的手账，你说了算</p></div>
             </div>
         </div>
         <footer>
-            <p>© 2025 人生即股票 · 陪你把每一份努力，都变成看得见的成长</p>
+            <p>© 2026 今日宜长进 · 陪你把每一份努力，都变成看得见的成长</p>
+            <p style="margin-top:10px;">
+                <a onclick="showLegalModal('privacy')" style="color:var(--text-muted);cursor:pointer;margin:0 10px;font-size:12px;">隐私政策</a>
+                <a onclick="showLegalModal('terms')" style="color:var(--text-muted);cursor:pointer;margin:0 10px;font-size:12px;">用户协议</a>
+            </p>
             <p style="margin-top:8px;font-size:12px;color:var(--text-muted);max-width:600px;margin-left:auto;margin-right:auto;line-height:1.6;">
-                ⚠️ 免责声明：本产品为个人成长量化工具，所有数值基于模型估算，不代表真实资产或投资建议。<br>
-                本指数<strong>不衡量</strong>幸福感、关系质量、心理健康、创造力、社会贡献，也不预测未来收入。成长没有标准答案。
+                温馨提示：本产品是个人成长记录与自我反思工具，所有数值均为模型估算，仅供娱乐与自我观察参考，<br>
+                不提供理财、证券、心理诊疗或职业建议，也不预测未来收入。成长没有标准曲线，你不需要为数字焦虑。
             </p>
         </footer>
     </div>
@@ -122,7 +127,7 @@
     <!-- 仪表盘 -->
     <div class="dashboard hidden" id="dashboard">
         <div class="dash-header">
-            <div class="dash-brand">人生即股票</div>
+            <div class="dash-brand">今日宜长进</div>
             <div class="dash-actions">
                 <button class="dash-btn" onclick="showAnchorModal()">🎯 校准指数</button>
                 <button class="dash-btn" onclick="showForecastModal()">🔮 未来预测</button>
@@ -133,11 +138,11 @@
                 <button class="dash-btn" onclick="showDepreciationModal()">📉 折旧预测</button>
                 <button class="dash-btn" onclick="showScenarioModal()">🎲 情景模拟</button>
                 <button class="dash-btn" onclick="showFamilyModal()">👨‍👩‍👧 家庭账本</button>
-                <button class="dash-btn" onclick="showAIWeeklyModal()">🤖 AI周报</button>
+                <button class="dash-btn" onclick="showAIWeeklyModal()">📝 周报</button>
                 <button class="dash-btn" onclick="showAnnualModal()">🎊 年报</button>
                 <button class="dash-btn" onclick="showPeerModal()">👥 同路人</button>
                 <button class="dash-btn" onclick="showChallengeModal()">🎯 挑战</button>
-                <button class="dash-btn" onclick="showMentorModal()">🧙 导师</button>
+                <button class="dash-btn" onclick="showMentorModal()">🌱 成长伙伴</button>
                 <button class="dash-btn" onclick="showMicroModal()">📚 微课</button>
                 <button class="dash-btn" onclick="showGratitudeModal()">💌 感恩卡</button>
                 <button class="dash-btn" onclick="showExportReportModal()">📄 导出报告</button>
@@ -147,7 +152,7 @@
                 <button class="dash-btn ghost" onclick="exportData()">⬆️ 导出</button>
                 <button class="dash-btn ghost" onclick="document.getElementById('importFile').click()">⬇️ 导入</button>
                 <input type="file" id="importFile" accept=".json" style="display:none" onchange="importData(event)">
-                <button class="dash-btn ghost" onclick="showParentModal()">👨‍👩‍👧 父母视角</button>
+                <button class="dash-btn ghost" onclick="showParentModal()">👨‍👩‍👧 家庭视角</button>
                 <button class="dash-btn ghost" onclick="editProfile()">✏️ 编辑资料</button>
                 <button class="dash-btn ghost" onclick="resetAll()">重置</button>
                 <button class="dash-btn ghost" onclick="handleDeleteAllData()" style="color:var(--accent-red);">🗑️ 删除全部数据</button>
@@ -155,19 +160,19 @@
         </div>
         <div class="dash-grid">
             <div class="dash-card" style="grid-column: span 2;">
-                <div class="dash-card-title">📈 人生走势图 <span id="klineAge" style="font-size:13px;color:var(--text-secondary);font-weight:normal;"></span></div>
+                <div class="dash-card-title">🌱 成长曲线 <span id="klineAge" style="font-size:13px;color:var(--text-secondary);font-weight:normal;"></span></div>
                 <canvas id="klineCanvas" height="300"></canvas>
             </div>
             <div class="dash-card">
-                <div class="dash-card-title">💰 当前人生指数</div>
+                <div class="dash-card-title">☀️ 此刻的成长指数</div>
                 <div style="font-size:36px;font-weight:bold;color:var(--accent-blue);" id="dashPrice">0</div>
                 <div id="dashChange" style="color:var(--accent-green);margin-bottom:8px;">+0%</div>
                 <div id="dashConfidence" style="font-size:12px;color:var(--text-muted);margin-bottom:16px;line-height:1.5;"></div>
                 <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
-                    <div class="metric"><div class="metric-label">累计成长资本</div><div class="metric-value" id="dashBV">0</div></div>
+                    <div class="metric"><div class="metric-label">累计成长值</div><div class="metric-value" id="dashBV">0</div></div>
                     <div class="metric"><div class="metric-label">年度成长力</div><div class="metric-value" id="dashEPS">0</div></div>
                     <div class="metric"><div class="metric-label">成长效率</div><div class="metric-value" id="dashROE">0%</div></div>
-                    <div class="metric"><div class="metric-label">估值倍数</div><div class="metric-value" id="dashPE">0倍</div></div>
+                    <div class="metric"><div class="metric-label">期待值</div><div class="metric-value" id="dashPE">—</div></div>
                 </div>
             </div>
 
@@ -199,7 +204,7 @@
                     <div class="invest-type" data-type="entertainment" onclick="selectInvestType('entertainment')">🎮 娱乐</div>
                     <div class="invest-type" data-type="other" onclick="selectInvestType('other')">📦 其他</div>
                 </div>
-                <input type="number" id="investAmount" placeholder="金额（元）" style="width:100%;padding:10px;border-radius:10px;background:rgba(255,255,255,0.05);border:1px solid var(--border);color:var(--text-primary);margin-bottom:10px;">
+                <input type="number" id="investAmount" placeholder="这笔花了多少（元，仅存本机）" style="width:100%;padding:10px;border-radius:10px;background:rgba(255,255,255,0.05);border:1px solid var(--border);color:var(--text-primary);margin-bottom:10px;">
                 <input type="text" id="investDesc" placeholder="描述（可选）" style="width:100%;padding:10px;border-radius:10px;background:rgba(255,255,255,0.05);border:1px solid var(--border);color:var(--text-primary);margin-bottom:10px;">
                 <button class="btn-primary" onclick="addInvestment()" style="width:100%;">添加投入</button>
             </div>

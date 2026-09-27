@@ -32,6 +32,6 @@ export function withVersion(user: UserProfile): UserProfile & { version: string;
     ...user,
     version: FORMULA_VERSION,
     disclaimer:
-      '本产品为个人成长量化工具，所有数值基于模型估算，不代表真实资产或投资建议。',
+      '本工具为个人成长记录与自我反思工具，所有数值为模型估算，仅供娱乐与自我观察，不构成理财、职业或心理咨询建议，也不预测收入。',
   };
 }

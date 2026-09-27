@@ -58,10 +58,10 @@ export function calcAttribution(user: UserProfile, stock: StockSnapshot): Attrib
   // BV 贡献
   items.push({
     key: 'bv',
-    name: '累计成长资本',
+    name: '累计成长值',
     contribution: Math.round(bvTerm * totalMultiplier * 10) / 10,
     ratio: price > 0 ? (bvTerm * totalMultiplier) / price : 0,
-    reason: `BV ${stock.bv}万 × 阶段系数 ${stageCoef.toFixed(2)}（${user.age}岁）`,
+    reason: `成长值 ${stock.bv} 点 × 阶段系数 ${stageCoef.toFixed(2)}（${user.age}岁）`,
   });
 
   // 里程碑贡献

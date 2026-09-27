@@ -31,7 +31,7 @@ export function getFamilyLedger(user: UserProfile): FamilyLedger {
 
   const suggestions: string[] = [];
   if (totalSupport === 0) {
-    suggestions.push('可记录家庭/父母的累计投入，更全面地认识成长资本');
+    suggestions.push('可记录家庭/父母的累计投入，更全面地认识成长积累');
   }
   if (supportRatio > 0.5) {
     suggestions.push('家庭支持占比较高，可逐步增加自我投入占比');
