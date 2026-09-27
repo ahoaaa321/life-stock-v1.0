@@ -133,14 +133,14 @@ function showOnboardingModal() {
   const modal = createModal(step.title, step.desc);
   let body = '';
   if (step.type === 'number') {
-    body = `<input type="number" id="onboardInput" class="form-input" placeholder="${step.placeholder}" style="width:100%;padding:12px;border-radius:10px;background:rgba(255,255,255,0.05);border:1px solid var(--border);color:var(--text-primary);font-size:16px;">`;
+    body = `<input type="number" id="onboardInput" class="form-input" placeholder="${step.placeholder}" style="width:100%;padding:12px;border-radius:10px;background:var(--surface-soft);border:1px solid var(--border);color:var(--text-primary);font-size:16px;">`;
   } else if (step.type === 'select') {
-    body = `<select id="onboardInput" style="width:100%;padding:12px;border-radius:10px;background:rgba(255,255,255,0.05);border:1px solid var(--border);color:var(--text-primary);font-size:16px;">
+    body = `<select id="onboardInput" style="width:100%;padding:12px;border-radius:10px;background:var(--surface-soft);border:1px solid var(--border);color:var(--text-primary);font-size:16px;">
       ${step.options!.map(o => `<option value="${o.value}">${o.label}</option>`).join('')}
     </select>`;
   } else if (step.type === 'multi') {
     body = `<div id="multiOptions" style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
-      ${step.options!.map(o => `<label style="display:flex;align-items:center;gap:8px;padding:10px;background:rgba(255,255,255,0.04);border-radius:10px;cursor:pointer;"><input type="checkbox" value="${o.value}"> ${o.label}</label>`).join('')}
+      ${step.options!.map(o => `<label style="display:flex;align-items:center;gap:8px;padding:10px;background:var(--surface-softer);border-radius:10px;cursor:pointer;"><input type="checkbox" value="${o.value}"> ${o.label}</label>`).join('')}
     </div>`;
   }
   body += `<div class="form-actions"><button class="btn-primary" onclick="submitOnboarding()">${onboardingStep === getVisibleSteps().length - 1 ? '生成我的成长曲线' : '下一步'}</button></div>`;
@@ -351,61 +351,61 @@ function drawKline(points: KlinePoint[], userObj: UserProfile) {
   });
 
   ctx.clearRect(0, 0, w, h);
-  ctx.strokeStyle = 'rgba(255,255,255,0.06)';
+  ctx.strokeStyle = 'rgba(120,95,60,0.12)';
   for (let i = 0; i <= 4; i++) {
     const y = pad.t + (priceH / 4) * i;
     ctx.beginPath(); ctx.moveTo(pad.l, y); ctx.lineTo(w - pad.r, y); ctx.stroke();
-    ctx.fillStyle = 'rgba(160,163,192,0.6)'; ctx.font = '11px sans-serif';
+    ctx.fillStyle = 'rgba(163,150,132,0.95)'; ctx.font = '11px sans-serif';
     ctx.fillText(String(Math.round(maxP - (range / 4) * i)), 5, y + 4);
   }
 
   const stepX = chartW / (points.length - 1);
   if (peerY >= pad.t && peerY <= pad.t + priceH) {
-    ctx.strokeStyle = 'rgba(251,191,36,0.5)'; ctx.lineWidth = 1.2; ctx.setLineDash([6, 4]);
+    ctx.strokeStyle = 'rgba(224,153,47,0.55)'; ctx.lineWidth = 1.2; ctx.setLineDash([6, 4]);
     ctx.beginPath(); ctx.moveTo(pad.l, peerY); ctx.lineTo(w - pad.r, peerY); ctx.stroke();
     ctx.setLineDash([]);
-    ctx.fillStyle = '#fbbf24'; ctx.font = 'bold 10px sans-serif';
+    ctx.fillStyle = '#c9871f'; ctx.font = 'bold 10px sans-serif';
     ctx.fillText('同龄人 ' + Math.round(peerPrice) + ' 点', w - pad.r + 3, peerY + 3);
   }
 
   const grad = ctx.createLinearGradient(0, pad.t, 0, pad.t + priceH);
-  grad.addColorStop(0, 'rgba(94,111,255,0.3)'); grad.addColorStop(1, 'rgba(94,111,255,0)');
+  grad.addColorStop(0, 'rgba(255,138,76,0.3)'); grad.addColorStop(1, 'rgba(255,138,76,0)');
   ctx.beginPath(); ctx.moveTo(pad.l, pad.t + priceH);
   points.forEach((p, i) => { const x = pad.l + stepX * i; const y = pad.t + priceH * (1 - (p.price - minP) / range); ctx.lineTo(x, y); });
   ctx.lineTo(pad.l + chartW, pad.t + priceH); ctx.closePath(); ctx.fillStyle = grad; ctx.fill();
 
   ctx.beginPath();
   ma5.forEach((v, i) => { const x = pad.l + stepX * i; const y = pad.t + priceH * (1 - (v - minP) / range); i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y); });
-  ctx.strokeStyle = 'rgba(168,85,247,0.7)'; ctx.lineWidth = 1.5; ctx.setLineDash([4, 3]); ctx.stroke(); ctx.setLineDash([]);
+  ctx.strokeStyle = 'rgba(62,155,143,0.7)'; ctx.lineWidth = 1.5; ctx.setLineDash([4, 3]); ctx.stroke(); ctx.setLineDash([]);
 
   ctx.beginPath();
   points.forEach((p, i) => { const x = pad.l + stepX * i; const y = pad.t + priceH * (1 - (p.price - minP) / range); i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y); });
-  ctx.strokeStyle = '#5e6fff'; ctx.lineWidth = 2.5; ctx.stroke();
+  ctx.strokeStyle = '#ff8a4c'; ctx.lineWidth = 2.5; ctx.stroke();
 
   const milestoneAges = [0, 6, 15, 18, 22, 30];
   points.forEach((p, i) => {
     if (milestoneAges.includes(p.age)) {
       const x = pad.l + stepX * i; const y = pad.t + priceH * (1 - (p.price - minP) / range);
-      ctx.beginPath(); ctx.arc(x, y, 5, 0, Math.PI * 2); ctx.fillStyle = '#4ade80'; ctx.fill();
-      ctx.strokeStyle = '#0a0e27'; ctx.lineWidth = 2; ctx.stroke();
+      ctx.beginPath(); ctx.arc(x, y, 5, 0, Math.PI * 2); ctx.fillStyle = '#3fa06a'; ctx.fill();
+      ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 2; ctx.stroke();
     }
   });
 
   const last = points[points.length - 1];
   const lastY = pad.t + priceH * (1 - (last.price - minP) / range);
-  ctx.fillStyle = last.price >= peerPrice ? '#22c55e' : '#ef4444';
+  ctx.fillStyle = last.price >= peerPrice ? '#3fa06a' : '#e05c4b';
   ctx.fillRect(w - pad.r, lastY - 9, 50, 18);
   ctx.fillStyle = '#fff'; ctx.font = 'bold 11px sans-serif'; ctx.textAlign = 'center';
   ctx.fillText(Math.round(last.price) + ' 点', w - pad.r + 25, lastY + 4); ctx.textAlign = 'left';
 
   points.forEach((p, i) => {
     const x = pad.l + stepX * i; const barH = (p.invest / maxVol) * volH; const barW = Math.max(1, stepX * 0.5);
-    ctx.fillStyle = last.price >= prices[0] ? 'rgba(34,197,94,0.5)' : 'rgba(239,68,68,0.5)';
+    ctx.fillStyle = last.price >= prices[0] ? 'rgba(63,160,106,0.5)' : 'rgba(224,92,75,0.5)';
     ctx.fillRect(x - barW / 2, volTop + volH - barH, barW, barH);
   });
 
   const labelStep = Math.max(1, Math.floor(points.length / 8));
-  ctx.fillStyle = 'rgba(160,163,192,0.6)'; ctx.font = '11px sans-serif';
+  ctx.fillStyle = 'rgba(163,150,132,0.95)'; ctx.font = '11px sans-serif';
   points.forEach((p, i) => {
     if (i % labelStep === 0 || i === points.length - 1) {
       ctx.fillText(p.age + '岁', pad.l + stepX * i - 10, h - pad.b + 20);
@@ -413,12 +413,12 @@ function drawKline(points: KlinePoint[], userObj: UserProfile) {
   });
 
   ctx.font = '10px sans-serif';
-  ctx.fillStyle = '#5e6fff'; ctx.fillRect(pad.l + 5, pad.t + 4, 12, 3);
-  ctx.fillStyle = '#c8cadf'; ctx.fillText('指数', pad.l + 21, pad.t + 8);
-  ctx.fillStyle = '#a855f7'; ctx.fillRect(pad.l + 50, pad.t + 4, 12, 3);
-  ctx.fillStyle = '#c8cadf'; ctx.fillText('MA5', pad.l + 66, pad.t + 8);
-  ctx.fillStyle = '#fbbf24'; ctx.fillRect(pad.l + 105, pad.t + 4, 12, 3);
-  ctx.fillStyle = '#c8cadf'; ctx.fillText('同龄人', pad.l + 121, pad.t + 8);
+  ctx.fillStyle = '#ff8a4c'; ctx.fillRect(pad.l + 5, pad.t + 4, 12, 3);
+  ctx.fillStyle = '#6f6558'; ctx.fillText('指数', pad.l + 21, pad.t + 8);
+  ctx.fillStyle = '#3e9b8f'; ctx.fillRect(pad.l + 50, pad.t + 4, 12, 3);
+  ctx.fillStyle = '#6f6558'; ctx.fillText('MA5', pad.l + 66, pad.t + 8);
+  ctx.fillStyle = '#e0992f'; ctx.fillRect(pad.l + 105, pad.t + 4, 12, 3);
+  ctx.fillStyle = '#6f6558'; ctx.fillText('同龄人', pad.l + 121, pad.t + 8);
 
   document.getElementById('klineAge')!.textContent = `（${last.age}岁，当前 ${Math.round(last.price)} 点）`;
 }
@@ -455,31 +455,31 @@ function showAnchorModal() {
   modal.querySelector('.modal-body')!.innerHTML = `
     <div style="display:grid;grid-template-columns:1fr;gap:16px;">
       <!-- B1-1：单笔投入反推校准 -->
-      <div style="padding:12px;background:rgba(255,255,255,0.04);border-radius:10px;">
+      <div style="padding:12px;background:var(--surface-softer);border-radius:10px;">
         <div style="font-weight:bold;margin-bottom:8px;">① 用一笔真实投入反推校准</div>
         <div style="font-size:12px;color:var(--text-muted);margin-bottom:10px;">输入你印象深刻的某年真实投入，系统按比例校准所有历史估算。</div>
         <div class="form-label">年龄</div>
-        <input type="number" id="anchorAge" value="${user.age}" style="width:100%;padding:10px;border-radius:10px;background:rgba(255,255,255,0.05);border:1px solid var(--border);color:var(--text-primary);margin-bottom:10px;">
+        <input type="number" id="anchorAge" value="${user.age}" style="width:100%;padding:10px;border-radius:10px;background:var(--surface-soft);border:1px solid var(--border);color:var(--text-primary);margin-bottom:10px;">
         <div class="form-label">该年真实投入（元）</div>
-        <input type="number" id="anchorAmount" placeholder="如 30000" style="width:100%;padding:10px;border-radius:10px;background:rgba(255,255,255,0.05);border:1px solid var(--border);color:var(--text-primary);margin-bottom:10px;">
+        <input type="number" id="anchorAmount" placeholder="如 30000" style="width:100%;padding:10px;border-radius:10px;background:var(--surface-soft);border:1px solid var(--border);color:var(--text-primary);margin-bottom:10px;">
         <button class="btn-primary" onclick="applyAnchor()" style="width:100%;">应用校准</button>
       </div>
 
       <!-- B1-2：手动调整家庭支持 -->
-      <div style="padding:12px;background:rgba(168,85,247,0.08);border-radius:10px;">
+      <div style="padding:12px;background:rgba(62,155,143,0.08);border-radius:10px;">
         <div style="font-weight:bold;margin-bottom:8px;">② 家庭支持（万元，选填）</div>
         <div style="font-size:12px;color:var(--text-muted);margin-bottom:10px;">父母/家庭对你的累计投入折算，不折旧、不乘权重，单独计入累计成长值。仅保存在本机。</div>
-        <input type="number" id="familyCapital" value="${user.familySupportCapital || 0}" step="1" style="width:100%;padding:10px;border-radius:10px;background:rgba(255,255,255,0.05);border:1px solid var(--border);color:var(--text-primary);margin-bottom:10px;">
+        <input type="number" id="familyCapital" value="${user.familySupportCapital || 0}" step="1" style="width:100%;padding:10px;border-radius:10px;background:var(--surface-soft);border:1px solid var(--border);color:var(--text-primary);margin-bottom:10px;">
         <button class="btn-primary" onclick="applyFamilyCapital()" style="width:100%;">保存家庭支持</button>
       </div>
 
       <!-- B1-3：标记"对我影响大"的投入 -->
-      <div style="padding:12px;background:rgba(94,111,255,0.08);border-radius:10px;">
+      <div style="padding:12px;background:rgba(255,138,76,0.08);border-radius:10px;">
         <div style="font-weight:bold;margin-bottom:8px;">③ 标记"对我影响很大"的投入</div>
         <div style="font-size:12px;color:var(--text-muted);margin-bottom:10px;">已记录的自我投入中，标记后会在明细页高亮展示（不改变数值，仅反映主观感知）。</div>
         ${user.investments.length === 0 ? '<div style="font-size:12px;color:var(--text-muted);">暂无手动记录的投入。先去「记一笔」添加吧。</div>' :
           user.investments.map((inv, i) => `
-            <label style="display:flex;align-items:center;gap:8px;padding:8px;background:rgba(255,255,255,0.04);border-radius:8px;margin-bottom:6px;cursor:pointer;">
+            <label style="display:flex;align-items:center;gap:8px;padding:8px;background:var(--surface-softer);border-radius:8px;margin-bottom:6px;cursor:pointer;">
               <input type="checkbox" id="impact_${i}" ${inv.impact ? 'checked' : ''}>
               <span style="font-size:13px;">${inv.desc || inv.type} · ${inv.amount.toLocaleString()} 元</span>
             </label>
@@ -488,7 +488,7 @@ function showAnchorModal() {
       </div>
 
       <!-- 主观感知权重 -->
-      <div style="padding:12px;background:rgba(34,197,94,0.08);border-radius:10px;">
+      <div style="padding:12px;background:rgba(63,160,106,0.08);border-radius:10px;">
         <div style="font-weight:bold;margin-bottom:8px;">④ 主观感知权重（${user.subjectiveWeight || 1.0}）</div>
         <div style="font-size:12px;color:var(--text-muted);margin-bottom:10px;">你觉得自己的成长值这个权重吗？1.0 为中性，0.5 偏低、1.5 偏高。这是你的主观判断，不影响客观累计成长值。</div>
         <input type="range" id="subjectiveRange" min="0.5" max="1.5" step="0.05" value="${user.subjectiveWeight || 1.0}" style="width:100%;" oninput="document.getElementById('subjVal').textContent=this.value">
@@ -563,12 +563,12 @@ function showForecastModal() {
     }
     return price;
   }).sort((a, b) => a - b);
-  const modal = createModal('🔮 未来预测', '基于蒙特卡洛模拟，预测未来10年指数走势');
+  const modal = createModal('🔮 未来展望', '基于假设参数的模拟推演，非预测承诺');
   modal.querySelector('.modal-body')!.innerHTML = `
     <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;margin-bottom:16px;">
-      <div style="padding:12px;background:rgba(239,68,68,0.1);border-radius:10px;text-align:center;"><div style="font-size:12px;color:var(--text-muted)">保守 (P10)</div><div style="font-size:20px;font-weight:bold;color:var(--accent-red);">${Math.round(simulations[5])} 点</div></div>
-      <div style="padding:12px;background:rgba(94,111,255,0.1);border-radius:10px;text-align:center;"><div style="font-size:12px;color:var(--text-muted)">中性 (P50)</div><div style="font-size:20px;font-weight:bold;color:var(--accent-blue);">${Math.round(simulations[25])} 点</div></div>
-      <div style="padding:12px;background:rgba(34,197,94,0.1);border-radius:10px;text-align:center;"><div style="font-size:12px;color:var(--text-muted)">乐观 (P90)</div><div style="font-size:20px;font-weight:bold;color:var(--accent-green);">${Math.round(simulations[45])} 点</div></div>
+      <div style="padding:12px;background:rgba(224,92,75,0.1);border-radius:10px;text-align:center;"><div style="font-size:12px;color:var(--text-muted)">保守 (P10)</div><div style="font-size:20px;font-weight:bold;color:var(--accent-red);">${Math.round(simulations[5])} 点</div></div>
+      <div style="padding:12px;background:rgba(255,138,76,0.1);border-radius:10px;text-align:center;"><div style="font-size:12px;color:var(--text-muted)">中性 (P50)</div><div style="font-size:20px;font-weight:bold;color:var(--accent-blue);">${Math.round(simulations[25])} 点</div></div>
+      <div style="padding:12px;background:rgba(63,160,106,0.1);border-radius:10px;text-align:center;"><div style="font-size:12px;color:var(--text-muted)">乐观 (P90)</div><div style="font-size:20px;font-weight:bold;color:var(--accent-green);">${Math.round(simulations[45])} 点</div></div>
     </div>
     <p style="color:var(--text-muted);font-size:12px;">假设：年化成长12%，波动率15%，持续学习</p>
   `;
@@ -586,18 +586,18 @@ function showShareModal() {
   const studyLevel = hours >= 8 ? '勤奋' : hours >= 3 ? '稳定' : hours >= 1 ? '一般' : '较少';
   const modal = createModal('📤 分享', '生成专属指数卡片');
   modal.querySelector('.modal-body')!.innerHTML = `
-    <div style="background:linear-gradient(135deg,#1a1f3a,#2a1f4a);padding:24px;border-radius:16px;text-align:center;">
-      <div style="font-size:12px;color:var(--text-muted);margin-bottom:8px;">今日宜长进 · 成长指数手账</div>
-      <div style="font-size:42px;font-weight:bold;color:var(--accent-blue);">${Math.round(stock.price)} 点</div>
-      <div style="color:${stock.change >= 0 ? 'var(--accent-green)' : 'var(--accent-red)'};margin-bottom:16px;">${stock.change >= 0 ? '+' : ''}${stock.change}%</div>
+    <div style="background:linear-gradient(135deg,#ffb36b,#ff8a4c 60%,#f2702e);padding:24px;border-radius:16px;text-align:center;color:#fff;box-shadow:0 12px 32px rgba(255,138,76,0.28);">
+      <div style="font-size:12px;color:rgba(255,255,255,0.85);margin-bottom:8px;letter-spacing:2px;">今日宜长进 · 成长指数手账</div>
+      <div style="font-size:42px;font-weight:bold;color:#fff;">${Math.round(stock.price)} 点</div>
+      <div style="color:rgba(255,255,255,0.92);margin-bottom:16px;">${stock.change >= 0 ? '+' : ''}${stock.change}%</div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
-        <div><div style="font-size:11px;color:var(--text-muted)">成长效率</div><div style="font-weight:bold">${roeLevel}</div></div>
-        <div><div style="font-size:11px;color:var(--text-muted)">里程碑</div><div style="font-weight:bold">${achieved}/${MILESTONES.length}</div></div>
-        <div><div style="font-size:11px;color:var(--text-muted)">健康等级</div><div style="font-weight:bold">${healthLevel}</div></div>
-        <div><div style="font-size:11px;color:var(--text-muted)">学习习惯</div><div style="font-weight:bold">${studyLevel}</div></div>
+        <div><div style="font-size:11px;color:rgba(255,255,255,0.75)">成长效率</div><div style="font-weight:bold;color:#fff">${roeLevel}</div></div>
+        <div><div style="font-size:11px;color:rgba(255,255,255,0.75)">里程碑</div><div style="font-weight:bold;color:#fff">${achieved}/${MILESTONES.length}</div></div>
+        <div><div style="font-size:11px;color:rgba(255,255,255,0.75)">健康等级</div><div style="font-weight:bold;color:#fff">${healthLevel}</div></div>
+        <div><div style="font-size:11px;color:rgba(255,255,255,0.75)">学习习惯</div><div style="font-weight:bold;color:#fff">${studyLevel}</div></div>
       </div>
-      <div style="margin-top:16px;font-size:11px;color:var(--text-muted);">成长没有标准答案，每一步都算数</div>
-      <div style="margin-top:8px;font-size:10px;color:rgba(255,255,255,0.3);">本数值基于模型估算，不代表真实资产</div>
+      <div style="margin-top:16px;font-size:11px;color:rgba(255,255,255,0.85);">成长没有标准答案，每一步都算数</div>
+      <div style="margin-top:8px;font-size:10px;color:rgba(255,255,255,0.55);">数值为模型估算，仅供自我观察，不构成任何建议</div>
     </div>
   `;
 }
@@ -611,11 +611,11 @@ function showSetbackModal() {
         { t: 'illness', i: '🏥', n: '重大疾病', d: '健康衰退' },
         { t: 'loss', i: '📉', n: '投入回落', d: '积累暂时放缓' },
         { t: 'stagnate', i: '😴', n: '躺平/断更', d: '停止成长' },
-      ].map(s => `<div class="setback-type" data-type="${s.t}" onclick="selectSetback('${s.t}')" style="padding:12px;background:rgba(255,255,255,0.04);border-radius:10px;cursor:pointer;text-align:center;"><div style="font-size:24px">${s.i}</div><div style="font-weight:bold;margin-top:4px">${s.n}</div><div style="font-size:11px;color:var(--text-muted)">${s.d}</div></div>`).join('')}
+      ].map(s => `<div class="setback-type" data-type="${s.t}" onclick="selectSetback('${s.t}')" style="padding:12px;background:var(--surface-softer);border-radius:10px;cursor:pointer;text-align:center;"><div style="font-size:24px">${s.i}</div><div style="font-weight:bold;margin-top:4px">${s.n}</div><div style="font-size:11px;color:var(--text-muted)">${s.d}</div></div>`).join('')}
     </div>
     <input type="range" id="setbackSeverity" min="1" max="10" value="5" style="width:100%;">
     <div style="text-align:center;color:var(--text-secondary);margin:8px 0;">严重度：<span id="severityVal">5</span></div>
-    <div class="form-actions"><button class="btn-primary" style="background:linear-gradient(135deg,#ef4444,#dc2626);" onclick="applySetback()">确认记录</button></div>
+    <div class="form-actions"><button class="btn-primary" style="background:linear-gradient(135deg,#e05c4b,#c94736);" onclick="applySetback()">确认记录</button></div>
   `;
   (document.getElementById('setbackSeverity') as HTMLInputElement).oninput = (e) => {
     document.getElementById('severityVal')!.textContent = (e.target as HTMLInputElement).value;
@@ -667,19 +667,19 @@ function showDetailModal() {
   const modal = createModal('📋 计算明细', '看清每一个数字的来龙去脉');
   modal.querySelector('.modal-body')!.innerHTML = `
     <div style="font-family:monospace;font-size:13px;line-height:2;">
-      <div style="padding:12px;background:rgba(94,111,255,0.1);border-radius:10px;margin-bottom:12px;">
+      <div style="padding:12px;background:rgba(255,138,76,0.1);border-radius:10px;margin-bottom:12px;">
         <div style="font-weight:bold;color:var(--accent-blue);margin-bottom:8px;">📐 计算公式</div>
         <div style="color:var(--text-secondary)">成长指数 = (100 + 累计成长值 × 阶段系数 + min(里程碑加成,200)) × 成长系数 × 质量系数 × (1 - 风险折扣) × 主观调整</div>
       </div>
-      <div style="padding:12px;background:rgba(255,255,255,0.04);border-radius:10px;margin-bottom:12px;">
+      <div style="padding:12px;background:var(--surface-softer);border-radius:10px;margin-bottom:12px;">
         <div style="font-weight:bold;margin-bottom:8px;">② 累计成长值 = ${stock.bv.toFixed(2)}（单位：万元口径）</div>
         ${Object.entries(bvByType).map(([t, v]) => `<div style="display:flex;justify-content:space-between;"><span style="color:var(--text-secondary)">${typeNames[t] || t}</span><span>${v.toFixed(2)}</span></div>`).join('')}
         ${u.familySupportCapital ? `<div style="display:flex;justify-content:space-between;color:var(--accent-purple);"><span>家庭支持（不折旧）</span><span>${u.familySupportCapital}</span></div>` : ''}
-        <div style="border-top:1px solid rgba(255,255,255,0.1);margin-top:6px;padding-top:6px;font-weight:bold;">成长值 × 阶段系数 = ${stock.bv.toFixed(2)} × ${stageCoef.toFixed(2)} = ${(stock.bv * stageCoef).toFixed(2)}</div>
+        <div style="border-top:1px solid var(--border);margin-top:6px;padding-top:6px;font-weight:bold;">成长值 × 阶段系数 = ${stock.bv.toFixed(2)} × ${stageCoef.toFixed(2)} = ${(stock.bv * stageCoef).toFixed(2)}</div>
       </div>
 
       <!-- A1：数据溯源卡片 -->
-      <div style="padding:12px;background:rgba(251,191,36,0.06);border:1px solid rgba(251,191,36,0.2);border-radius:10px;margin-bottom:12px;">
+      <div style="padding:12px;background:rgba(224,153,47,0.06);border:1px solid rgba(224,153,47,0.2);border-radius:10px;margin-bottom:12px;">
         <div style="font-weight:bold;color:var(--accent-yellow);margin-bottom:8px;">🔍 历史投入估算 · 数据溯源</div>
         <div style="font-size:12px;color:var(--text-secondary);line-height:1.8;">
           <div><strong>数据来源：</strong>${src.name}（${src.year}）</div>
@@ -687,7 +687,7 @@ function showDetailModal() {
           <div><strong>调整系数：</strong>地区 ${Constants.REGION_COEF[u.region]} × 城乡 ${Constants.AREA_COEF[u.area]} × 收入 ${Constants.INCOME_COEF[u.income]}</div>
         </div>
         <!-- A2：参考区间，替代"±4%精度" -->
-        <div style="margin-top:10px;padding:10px;background:rgba(255,255,255,0.04);border-radius:8px;">
+        <div style="margin-top:10px;padding:10px;background:var(--surface-softer);border-radius:8px;">
           <div style="font-size:12px;color:var(--text-muted);margin-bottom:6px;">📊 各阶段年均教育投入参考区间（元）：</div>
           ${ageRangeKeys.map(k => {
             const r = Constants.AGE_SPEND_RANGE[k];
@@ -697,11 +697,11 @@ function showDetailModal() {
         </div>
       </div>
 
-      <div style="padding:12px;background:rgba(255,255,255,0.04);border-radius:10px;margin-bottom:12px;">
+      <div style="padding:12px;background:var(--surface-softer);border-radius:10px;margin-bottom:12px;">
         <div style="font-weight:bold;margin-bottom:8px;">③ 里程碑加成 = ${stock.milestoneBonus}（封顶 200）</div>
         ${achieved.map(m => `<div style="font-size:12px;color:var(--text-secondary)">${m.icon} ${m.name} +${m.bonus}</div>`).join('')}
       </div>
-      <div style="padding:12px;background:rgba(255,255,255,0.04);border-radius:10px;margin-bottom:12px;">
+      <div style="padding:12px;background:var(--surface-softer);border-radius:10px;margin-bottom:12px;">
         <div style="font-weight:bold;margin-bottom:8px;">④ 系数</div>
         <div style="display:flex;justify-content:space-between;"><span style="color:var(--text-secondary)">成长系数</span><span>${stock.growthCoef}</span></div>
         <div style="display:flex;justify-content:space-between;"><span style="color:var(--text-secondary)">质量系数（健康${stock.effectiveHealth}）</span><span>${stock.qualityCoef}</span></div>
@@ -710,28 +710,28 @@ function showDetailModal() {
       </div>
 
       <!-- 归因分析 -->
-      <div style="padding:12px;background:rgba(94,111,255,0.06);border:1px solid rgba(94,111,255,0.2);border-radius:10px;margin-bottom:12px;">
+      <div style="padding:12px;background:rgba(255,138,76,0.06);border:1px solid rgba(255,138,76,0.2);border-radius:10px;margin-bottom:12px;">
         <div style="font-weight:bold;color:var(--accent-blue);margin-bottom:8px;">📊 指数归因 · 每个因子贡献了多少</div>
         ${(() => {
           const items = calcAttribution(u, stock);
           const top = getTopContributor(items);
           return items.map(item => {
             const isMultiplier = item.contribution === 0;
-            return `<div style="display:flex;justify-content:space-between;align-items:center;padding:4px 0;border-bottom:1px solid rgba(255,255,255,0.05);">
+            return `<div style="display:flex;justify-content:space-between;align-items:center;padding:4px 0;border-bottom:1px solid var(--surface-soft);">
               <span style="color:var(--text-secondary);font-size:12px;">${item.name}</span>
               <span style="font-size:12px;">${isMultiplier ? item.reason : `<strong>+${item.contribution}</strong> · ${item.reason}`}</span>
             </div>`;
           }).join('') +
-          (top ? `<div style="margin-top:8px;padding:8px;background:rgba(34,197,94,0.08);border-radius:8px;font-size:12px;color:var(--accent-green);">⭐ 最大贡献：${top.name}（+${top.contribution}点）</div>` : '');
+          (top ? `<div style="margin-top:8px;padding:8px;background:rgba(63,160,106,0.08);border-radius:8px;font-size:12px;color:var(--accent-green);">⭐ 最大贡献：${top.name}（+${top.contribution}点）</div>` : '');
         })()}
       </div>
 
-      <div style="padding:16px;background:linear-gradient(135deg,rgba(94,111,255,0.2),rgba(168,85,247,0.2));border-radius:12px;text-align:center;">
+      <div style="padding:16px;background:linear-gradient(135deg,rgba(255,138,76,0.2),rgba(62,155,143,0.2));border-radius:12px;text-align:center;">
         <div style="color:var(--text-secondary);font-size:12px;">此刻的成长指数</div>
         <div style="font-size:32px;font-weight:bold;color:var(--accent-blue);">${Math.round(stock.price)} 点</div>
       </div>
     </div>
-    <div style="margin-top:16px;padding:12px;background:rgba(251,191,36,0.08);border-radius:10px;font-size:12px;color:var(--text-secondary);line-height:1.6;">
+    <div style="margin-top:16px;padding:12px;background:rgba(224,153,47,0.08);border-radius:10px;font-size:12px;color:var(--text-secondary);line-height:1.6;">
       温馨提示：以上数值基于模型估算，仅供自我观察与娱乐参考，不构成理财、职业或心理建议，也不预测未来收入。<br>
       本指数<strong>不衡量</strong>幸福感、关系质量、心理健康、创造力与社会贡献——成长没有标准曲线。
     </div>
@@ -747,14 +747,14 @@ function showParentModal() {
   const modal = createModal('👨‍👩‍👧 家庭视角', '家人的每一份支持，都是你成长的底气');
   modal.querySelector('.modal-body')!.innerHTML = `
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px;">
-      <div style="padding:14px;background:rgba(168,85,247,0.1);border-radius:10px;text-align:center;"><div style="font-size:12px;color:var(--text-muted)">家庭支持</div><div style="font-size:20px;font-weight:bold;color:var(--accent-purple);">${parentInvest.toLocaleString()} 元</div></div>
-      <div style="padding:14px;background:rgba(251,146,60,0.1);border-radius:10px;text-align:center;"><div style="font-size:12px;color:var(--text-muted)">自我投入</div><div style="font-size:20px;font-weight:bold;color:#fb923c;">${selfInvest.toLocaleString()} 元</div></div>
+      <div style="padding:14px;background:rgba(62,155,143,0.1);border-radius:10px;text-align:center;"><div style="font-size:12px;color:var(--text-muted)">家庭支持</div><div style="font-size:20px;font-weight:bold;color:var(--accent-purple);">${parentInvest.toLocaleString()} 元</div></div>
+      <div style="padding:14px;background:rgba(251,146,60,0.1);border-radius:10px;text-align:center;"><div style="font-size:12px;color:var(--text-muted)">自我投入</div><div style="font-size:20px;font-weight:bold;color:#ff8a4c;">${selfInvest.toLocaleString()} 元</div></div>
     </div>
-    <div style="height:20px;background:rgba(255,255,255,0.05);border-radius:10px;overflow:hidden;display:flex;">
+    <div style="height:20px;background:var(--surface-soft);border-radius:10px;overflow:hidden;display:flex;">
       <div style="width:${(parentInvest / total * 100)}%;background:var(--accent-purple);"></div>
-      <div style="width:${(selfInvest / total * 100)}%;background:#fb923c;"></div>
+      <div style="width:${(selfInvest / total * 100)}%;background:#ff8a4c;"></div>
     </div>
-    <div style="margin-top:16px;padding:14px;background:rgba(74,222,128,0.08);border-radius:12px;font-size:13px;color:var(--text-secondary);line-height:1.7;">
+    <div style="margin-top:16px;padding:14px;background:rgba(63,160,106,0.1);border-radius:12px;font-size:13px;color:var(--text-secondary);line-height:1.7;">
       💡 当前 ${user.age} 岁，成长指数已从基准 100 走到 ${Math.round(stock.price)} 点。<br>
       ${selfInvest === 0 ? '⚠️ 还没有记录自我投入，试试"记一笔"吧！' : '继续加油，每一笔自我投入都在为成长添砖加瓦。'}
     </div>
@@ -824,7 +824,7 @@ function init() {
       <h2>🔒 隐私保护指引</h2>
       <div style="color:var(--text-secondary);line-height:1.9;margin:16px 0;text-align:left;font-size:14px;">
         <p>欢迎使用「今日宜长进」。在开始前，请阅读并选择你授权的范围：</p>
-        <label style="display:flex;gap:10px;align-items:flex-start;padding:12px;background:rgba(255,255,255,0.04);border-radius:10px;margin:10px 0;cursor:pointer;">
+        <label style="display:flex;gap:10px;align-items:flex-start;padding:12px;background:var(--surface-softer);border-radius:10px;margin:10px 0;cursor:pointer;">
           <input type="checkbox" id="consentBase" style="margin-top:3px;">
           <span>我已阅读并同意 <a href="javascript:void(0)" id="linkPrivacy1" style="color:var(--accent-blue);text-decoration:underline;">《隐私政策》</a> 与 <a href="javascript:void(0)" id="linkTerms1" style="color:var(--accent-blue);text-decoration:underline;">《用户协议》</a>，并同意在本机保存年龄、地区、学习、健康自评等<strong>基础成长信息</strong>（不上传服务器）。</span>
         </label>
@@ -833,7 +833,7 @@ function init() {
           <span><strong>（选填）</strong>我单独同意收集<strong style="color:var(--accent-orange);">敏感信息</strong>：年收入、负债情况、家庭支持金额、每笔花费金额。不勾选也能正常使用，相关字段将使用通用估算值并如实标注。</span>
         </label>
         <p style="font-size:12px;color:var(--text-muted);">你可随时在「设置 → 删除全部数据」中清除全部本机数据。未满 14 周岁请在监护人同意后使用。</p>
-        <p style="margin-top:10px;padding:12px;background:rgba(255,255,255,0.04);border-radius:8px;font-size:12px;">
+        <p style="margin-top:10px;padding:12px;background:var(--surface-softer);border-radius:8px;font-size:12px;">
           ⚠️ 本应用为个人成长记录与自我反思工具，数值均为模型估算，<strong>仅供娱乐与自我观察，不构成理财、职业或心理建议，也不预测收入</strong>。
         </p>
       </div>
@@ -964,27 +964,27 @@ function showDrawdownModal() {
   const dd = calcDrawdown(kline, snap.price);
   const questions = getReviewQuestions(user);
 
-  const modal = createModal('📉 成长回撤复盘', '复盘是为了觉察，不是自责');
+  const modal = createModal('📉 成长回落复盘', '复盘是为了觉察，不是自责');
   modal.querySelector('.modal-body')!.innerHTML = `
       <div style="text-align:center;margin-bottom:20px;">
         <div style="font-size:48px;">${dd.inDrawdown ? '📉' : '📈'}</div>
-        <div style="font-size:22px;font-weight:bold;margin-top:8px;">${dd.inDrawdown ? '阶段性回撤' : '稳健成长'}</div>
+        <div style="font-size:22px;font-weight:bold;margin-top:8px;">${dd.inDrawdown ? '阶段性回落' : '稳健成长'}</div>
       </div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:20px;">
         <div class="metric"><div class="metric-label">历史峰值</div><div class="metric-value">${Math.round(dd.peak)}</div></div>
         <div class="metric"><div class="metric-label">当前指数</div><div class="metric-value">${Math.round(dd.current)}</div></div>
-        <div class="metric"><div class="metric-label">回撤幅度</div><div class="metric-value" style="color:${dd.inDrawdown ? 'var(--accent-orange)' : 'var(--accent-green)'}">${dd.drawdownPct}%</div></div>
+        <div class="metric"><div class="metric-label">回落幅度</div><div class="metric-value" style="color:${dd.inDrawdown ? 'var(--accent-orange)' : 'var(--accent-green)'}">${dd.drawdownPct}%</div></div>
         <div class="metric"><div class="metric-label">距峰值</div><div class="metric-value">${dd.peakDaysAgo} 天</div></div>
       </div>
-      <div style="background:rgba(255,255,255,0.05);border-radius:12px;padding:14px;margin-bottom:20px;">
+      <div style="background:var(--surface-soft);border-radius:12px;padding:14px;margin-bottom:20px;">
         <div style="font-weight:600;margin-bottom:8px;">💡 复盘建议</div>
         ${dd.suggestions.map((s) => `<div style="font-size:13px;color:var(--text-secondary);line-height:1.8;">• ${s}</div>`).join('')}
       </div>
-      <div style="background:rgba(255,255,255,0.05);border-radius:12px;padding:14px;">
+      <div style="background:var(--surface-soft);border-radius:12px;padding:14px;">
         <div style="font-weight:600;margin-bottom:8px;">🤔 自问</div>
         ${questions.map((q) => `<div style="font-size:13px;color:var(--text-secondary);line-height:1.8;">• ${q}</div>`).join('')}
       </div>
-      <div style="font-size:11px;color:var(--text-muted);margin-top:16px;text-align:center;">回撤是成长的正常阶段，不必焦虑，重在觉察与调整</div>
+      <div style="font-size:11px;color:var(--text-muted);margin-top:16px;text-align:center;">回落是成长的正常阶段，不必焦虑，重在觉察与调整</div>
   `;
 }
 
@@ -1002,7 +1002,7 @@ function showGoalModal() {
       </div>
       <div style="margin-bottom:16px;">
         <label style="font-size:13px;color:var(--text-secondary);">目标成长指数（点）</label>
-        <input type="number" id="goalTarget" value="${Math.round(snap.price * 1.5)}" style="width:100%;padding:12px;border-radius:10px;background:rgba(255,255,255,0.05);border:1px solid var(--border);color:var(--text-primary);margin-top:6px;font-size:18px;">
+        <input type="number" id="goalTarget" value="${Math.round(snap.price * 1.5)}" style="width:100%;padding:12px;border-radius:10px;background:var(--surface-soft);border:1px solid var(--border);color:var(--text-primary);margin-top:6px;font-size:18px;">
       </div>
       <button class="btn-primary" onclick="calcGoal()" style="width:100%;padding:14px;font-size:16px;">反推所需投入</button>
       <div id="goalResult"></div>
@@ -1017,7 +1017,7 @@ function calcGoal() {
   const plan = reverseGoal(user, target);
   const result = document.getElementById('goalResult')!;
   result.innerHTML = `
-    <div style="margin-top:20px;background:rgba(255,255,255,0.05);border-radius:12px;padding:16px;">
+    <div style="margin-top:20px;background:var(--surface-soft);border-radius:12px;padding:16px;">
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px;">
         <div class="metric"><div class="metric-label">目标成长指数</div><div class="metric-value">${plan.target} 点</div></div>
         <div class="metric"><div class="metric-label">此刻成长指数</div><div class="metric-value">${plan.current} 点</div></div>
@@ -1057,11 +1057,11 @@ function showReportModal() {
         <div class="metric"><div class="metric-label">月初指数</div><div class="metric-value">${report.startPrice}</div></div>
         <div class="metric"><div class="metric-label">月末指数</div><div class="metric-value">${report.endPrice}</div></div>
       </div>
-      <div style="background:rgba(255,255,255,0.05);border-radius:12px;padding:14px;margin-bottom:14px;">
+      <div style="background:var(--surface-soft);border-radius:12px;padding:14px;margin-bottom:14px;">
         <div style="font-weight:600;margin-bottom:8px;">⭐ 本月亮点</div>
         ${report.highlights.length > 0 ? report.highlights.map((h) => `<div style="font-size:13px;color:var(--text-secondary);line-height:1.8;">• ${h}</div>`).join('') : '<div style="font-size:13px;color:var(--text-muted);">继续积累，下个月会更好</div>'}
       </div>
-      <div style="background:rgba(255,255,255,0.05);border-radius:12px;padding:14px;">
+      <div style="background:var(--surface-soft);border-radius:12px;padding:14px;">
         <div style="font-weight:600;margin-bottom:8px;">📌 下月建议</div>
         ${report.suggestions.map((s) => `<div style="font-size:13px;color:var(--text-secondary);line-height:1.8;">• ${s}</div>`).join('')}
       </div>
@@ -1074,7 +1074,7 @@ function showReportModal() {
 function showRadarModal() {
   if (!user) return;
   const radar = calcRadar(user);
-  const colors = { education: '#5e6fff', skill: '#9d6fff', health: '#4ade80', network: '#fbbf24', entertainment: '#f87171', other: '#94a3b8' };
+  const colors = { education: '#ff8a4c', skill: '#f5a623', health: '#3fa06a', network: '#3e9b8f', entertainment: '#e0705b', other: '#a79b8c' };
 
   // 用 canvas 画雷达图
   const canvasHtml = `<canvas id="radarCanvas" width="300" height="300" style="display:block;margin:0 auto;"></canvas>`;
@@ -1089,7 +1089,7 @@ function showRadarModal() {
         <div class="metric"><div class="metric-label">均衡度</div><div class="metric-value">${Math.round(radar.balance * 100)}%</div></div>
         <div class="metric"><div class="metric-label">最突出</div><div class="metric-value">${radar.dimensions.find((d) => d.type === radar.dominant)?.label.split(' ')[1]}</div></div>
       </div>
-      <div style="background:rgba(255,255,255,0.05);border-radius:12px;padding:14px;">
+      <div style="background:var(--surface-soft);border-radius:12px;padding:14px;">
         <div style="font-weight:600;margin-bottom:8px;">💡 结构建议</div>
         <div style="font-size:13px;color:var(--text-secondary);line-height:1.8;">
           ${radar.balance >= 0.6 ? '投入结构较均衡，继续保持多维发展。' : `${radar.dimensions.find((d) => d.type === radar.weakest)?.label}维度投入较少，可适当增加。`}
@@ -1121,7 +1121,7 @@ function drawRadar(radar: any, colors: Record<string, string>) {
       if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
     }
     ctx.closePath();
-    ctx.strokeStyle = 'rgba(255,255,255,0.1)';
+    ctx.strokeStyle = 'rgba(120,95,60,0.16)';
     ctx.stroke();
   }
   // 轴线
@@ -1130,7 +1130,7 @@ function drawRadar(radar: any, colors: Record<string, string>) {
     ctx.beginPath();
     ctx.moveTo(cx, cy);
     ctx.lineTo(cx + r * Math.cos(angle), cy + r * Math.sin(angle));
-    ctx.strokeStyle = 'rgba(255,255,255,0.15)';
+    ctx.strokeStyle = 'rgba(120,95,60,0.2)';
     ctx.stroke();
   }
   // 数据
@@ -1143,13 +1143,13 @@ function drawRadar(radar: any, colors: Record<string, string>) {
     if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
   }
   ctx.closePath();
-  ctx.fillStyle = 'rgba(94,111,255,0.3)';
+  ctx.fillStyle = 'rgba(255,138,76,0.3)';
   ctx.fill();
-  ctx.strokeStyle = '#5e6fff';
+  ctx.strokeStyle = '#ff8a4c';
   ctx.lineWidth = 2;
   ctx.stroke();
   // 标签
-  ctx.fillStyle = 'rgba(255,255,255,0.7)';
+  ctx.fillStyle = '#5c5246';
   ctx.font = '12px sans-serif';
   ctx.textAlign = 'center';
   for (let i = 0; i < n; i++) {
@@ -1168,7 +1168,7 @@ function showDepreciationModal() {
   const annualInvest = Math.round((user.annualIncome * 0.1) / 12);
   const forecast = forecastDepreciation(user, 10, annualInvest);
 
-  const modal = createModal('📉 折旧预测', '看看你的成长积累随时间如何变化');
+  const modal = createModal('📉 折旧推演', '看看你的成长积累随时间如何变化');
   modal.querySelector('.modal-body')!.innerHTML = `
       <div style="text-align:center;margin-bottom:16px;">
         <div style="font-size:14px;color:var(--text-muted);">假设每年新增自我花费约 ${annualInvest.toLocaleString()} 元（估算口径）</div>
@@ -1178,11 +1178,11 @@ function showDepreciationModal() {
         <div class="metric"><div class="metric-label">5 年后</div><div class="metric-value" style="color:${forecast.bv5y >= snap.bv ? 'var(--accent-green)' : 'var(--accent-orange)'}">${forecast.bv5y}</div></div>
         <div class="metric"><div class="metric-label">10 年后</div><div class="metric-value" style="color:${forecast.bv10y >= snap.bv ? 'var(--accent-green)' : 'var(--accent-orange)'}">${forecast.bv10y}</div></div>
       </div>
-      <div style="background:rgba(255,255,255,0.05);border-radius:12px;padding:14px;margin-bottom:14px;">
+      <div style="background:var(--surface-soft);border-radius:12px;padding:14px;margin-bottom:14px;">
         <div style="font-weight:600;margin-bottom:8px;">📈 10 年趋势</div>
         ${forecast.points.map((p) => `<div style="display:flex;justify-content:space-between;font-size:13px;color:var(--text-secondary);line-height:1.8;"><span>${p.age} 岁</span><span>成长值 ${p.bv}（自然衰减 -${p.depreciation}，新增 +${p.newInvest}）</span></div>`).join('')}
       </div>
-      <div style="background:rgba(255,255,255,0.05);border-radius:12px;padding:14px;">
+      <div style="background:var(--surface-soft);border-radius:12px;padding:14px;">
         <div style="font-weight:600;margin-bottom:8px;">💡 建议</div>
         ${forecast.suggestions.map((s) => `<div style="font-size:13px;color:var(--text-secondary);line-height:1.8;">• ${s}</div>`).join('')}
       </div>
@@ -1198,7 +1198,7 @@ function showScenarioModal() {
   const modal = createModal('🎲 情景模拟', '不同节奏下，你的指数会怎样');
   modal.querySelector('.modal-body')!.innerHTML = `
       ${scenarios.map((s) => `
-        <div style="background:rgba(255,255,255,0.05);border-radius:12px;padding:16px;margin-bottom:12px;">
+        <div style="background:var(--surface-soft);border-radius:12px;padding:16px;margin-bottom:12px;">
           <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px;">
             <span style="font-size:24px;">${s.icon}</span>
             <div>
@@ -1230,10 +1230,10 @@ function showFamilyModal() {
       </div>
       <div style="margin-bottom:16px;">
         <label style="font-size:13px;color:var(--text-secondary);">家庭支持（万元，选填，仅存本机）</label>
-        <input type="number" id="familySupportInput" value="${ledger.totalSupport}" style="width:100%;padding:10px;border-radius:10px;background:rgba(255,255,255,0.05);border:1px solid var(--border);color:var(--text-primary);margin-top:6px;">
+        <input type="number" id="familySupportInput" value="${ledger.totalSupport}" style="width:100%;padding:10px;border-radius:10px;background:var(--surface-soft);border:1px solid var(--border);color:var(--text-primary);margin-top:6px;">
       </div>
       <button class="btn-primary" onclick="saveFamilySupport()" style="width:100%;padding:12px;">保存</button>
-      <div style="background:rgba(255,255,255,0.05);border-radius:12px;padding:14px;margin-top:16px;">
+      <div style="background:var(--surface-soft);border-radius:12px;padding:14px;margin-top:16px;">
         <div style="font-weight:600;margin-bottom:8px;">💡 说明</div>
         ${ledger.suggestions.map((s) => `<div style="font-size:13px;color:var(--text-secondary);line-height:1.8;">• ${s}</div>`).join('')}
       </div>
@@ -1259,20 +1259,20 @@ function showAIWeeklyModal() {
   const report = generateAIWeeklyReport(user);
   const modal = createModal('📝 本周周报', '基于你的记录由模板在本地生成，不上传数据');
   modal.querySelector('.modal-body')!.innerHTML = `
-      <div style="background:linear-gradient(135deg,rgba(94,111,255,0.15),rgba(168,85,247,0.15));border-radius:12px;padding:16px;margin-bottom:16px;">
+      <div style="background:linear-gradient(135deg,rgba(255,138,76,0.15),rgba(62,155,143,0.15));border-radius:12px;padding:16px;margin-bottom:16px;">
         <div style="font-size:12px;color:var(--text-muted);margin-bottom:6px;">${report.week}</div>
         <div style="font-size:16px;font-weight:600;line-height:1.6;">${report.summary}</div>
         <div style="font-size:13px;color:var(--text-secondary);margin-top:8px;">${report.moodNote}</div>
       </div>
-      ${report.highlights.length > 0 ? `<div style="background:rgba(74,222,128,0.08);border-radius:12px;padding:14px;margin-bottom:14px;">
+      ${report.highlights.length > 0 ? `<div style="background:rgba(63,160,106,0.1);border-radius:12px;padding:14px;margin-bottom:14px;">
         <div style="font-weight:600;margin-bottom:8px;color:var(--accent-green);">⭐ 本周亮点</div>
         ${report.highlights.map((h) => `<div style="font-size:13px;color:var(--text-secondary);line-height:1.8;">• ${h}</div>`).join('')}
       </div>` : ''}
-      ${report.improvements.length > 0 ? `<div style="background:rgba(251,191,36,0.08);border-radius:12px;padding:14px;margin-bottom:14px;">
+      ${report.improvements.length > 0 ? `<div style="background:rgba(224,153,47,0.08);border-radius:12px;padding:14px;margin-bottom:14px;">
         <div style="font-weight:600;margin-bottom:8px;color:var(--accent-yellow);">🔍 待改进</div>
         ${report.improvements.map((i) => `<div style="font-size:13px;color:var(--text-secondary);line-height:1.8;">• ${i}</div>`).join('')}
       </div>` : ''}
-      <div style="background:rgba(94,111,255,0.08);border-radius:12px;padding:14px;">
+      <div style="background:rgba(255,138,76,0.08);border-radius:12px;padding:14px;">
         <div style="font-weight:600;margin-bottom:8px;color:var(--accent-blue);">🎯 下周行动</div>
         ${report.actions.map((a) => `<div style="font-size:13px;color:var(--text-secondary);line-height:1.8;">• ${a}</div>`).join('')}
       </div>
@@ -1296,9 +1296,9 @@ function showAnnualModal() {
         <div style="font-size:24px;font-weight:bold;margin-top:8px;">${report.year} 年报</div>
       </div>
       <div style="display:flex;flex-wrap:wrap;gap:8px;justify-content:center;margin-bottom:20px;">
-        ${report.keywords.map((k) => `<span style="padding:6px 14px;border-radius:20px;background:rgba(94,111,255,0.15);font-size:13px;">${k}</span>`).join('')}
+        ${report.keywords.map((k) => `<span style="padding:6px 14px;border-radius:20px;background:rgba(255,138,76,0.15);font-size:13px;">${k}</span>`).join('')}
       </div>
-      <div style="background:rgba(255,255,255,0.05);border-radius:12px;padding:16px;margin-bottom:16px;text-align:center;">
+      <div style="background:var(--surface-soft);border-radius:12px;padding:16px;margin-bottom:16px;text-align:center;">
         <div style="font-size:14px;color:var(--text-muted);">年度指数变化</div>
         <div style="font-size:32px;font-weight:bold;color:${report.changePoints >= 0 ? 'var(--accent-green)' : 'var(--accent-orange)'}">${report.changePoints >= 0 ? '+' : ''}${report.changePoints}</div>
         <div style="font-size:13px;color:var(--text-muted);">${report.startPrice} → ${report.endPrice}（${report.changePct >= 0 ? '+' : ''}${report.changePct}%）</div>
@@ -1311,11 +1311,11 @@ function showAnnualModal() {
         <div class="metric"><div class="metric-label">平均情绪</div><div class="metric-value" style="font-size:16px;">${moodText}</div></div>
         <div class="metric"><div class="metric-label">均衡度</div><div class="metric-value">${report.milestoneCount > 0 ? '良好' : '—'}</div></div>
       </div>
-      <div style="background:rgba(255,255,255,0.05);border-radius:12px;padding:14px;margin-bottom:14px;">
+      <div style="background:var(--surface-soft);border-radius:12px;padding:14px;margin-bottom:14px;">
         <div style="font-weight:600;margin-bottom:8px;">📖 年度总结</div>
         <div style="font-size:14px;color:var(--text-secondary);line-height:1.8;">${report.summary}</div>
       </div>
-      <div style="background:rgba(255,255,255,0.05);border-radius:12px;padding:14px;">
+      <div style="background:var(--surface-soft);border-radius:12px;padding:14px;">
         <div style="font-weight:600;margin-bottom:8px;">🌱 下年度方向</div>
         ${report.nextYearPlan.map((p) => `<div style="font-size:13px;color:var(--text-secondary);line-height:1.8;">• ${p}</div>`).join('')}
       </div>
@@ -1343,12 +1343,12 @@ function showPeerModal() {
         <div class="metric"><div class="metric-label">你的成长积累</div><div class="metric-value">${Math.round(userBV)}</div></div>
         <div class="metric"><div class="metric-label">同类锚点（估算）</div><div class="metric-value">${Math.round(peerBV)}</div></div>
       </div>
-      <div style="background:rgba(255,255,255,0.05);border-radius:12px;padding:16px;margin-bottom:16px;text-align:center;">
+      <div style="background:var(--surface-soft);border-radius:12px;padding:16px;margin-bottom:16px;text-align:center;">
         <div style="font-size:14px;color:var(--text-muted);">相对同类锚点</div>
         <div style="font-size:28px;font-weight:bold;color:${diff >= 0 ? 'var(--accent-green)' : 'var(--accent-orange)'};margin-top:6px;">${diff >= 0 ? '+' : ''}${diffPct}%</div>
         <div style="font-size:13px;color:var(--text-secondary);margin-top:6px;">${diff >= 0 ? '你走在多数人前面，继续保持' : '还有追赶空间，但成长没有终点'}</div>
       </div>
-      <div style="background:rgba(255,255,255,0.05);border-radius:12px;padding:14px;">
+      <div style="background:var(--surface-soft);border-radius:12px;padding:14px;">
         <div style="font-weight:600;margin-bottom:8px;">💡 关于对比</div>
         <div style="font-size:13px;color:var(--text-secondary);line-height:1.8;">
           这个锚点是基于相似年龄、城市、学历的统计估算，仅作参考。每个人的成长节奏不同，<br>
@@ -1373,7 +1373,7 @@ function showChallengeModal() {
         <div style="font-size:22px;font-weight:bold;margin-top:8px;">挑战完成度 ${completion}%</div>
       </div>
       ${challenges.map((c) => `
-        <div style="background:rgba(255,255,255,0.05);border-radius:12px;padding:14px;margin-bottom:10px;${c.done ? 'border:1px solid var(--accent-green);' : ''}">
+        <div style="background:var(--surface-soft);border-radius:12px;padding:14px;margin-bottom:10px;${c.done ? 'border:1px solid var(--accent-green);' : ''}">
           <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px;">
             <span style="font-size:22px;">${c.icon}</span>
             <div style="flex:1;">
@@ -1382,8 +1382,8 @@ function showChallengeModal() {
             </div>
             <div style="font-size:14px;font-weight:bold;color:${c.done ? 'var(--accent-green)' : 'var(--accent-blue)'};">${c.progress}/${c.target} ${c.unit}</div>
           </div>
-          <div style="height:6px;background:rgba(255,255,255,0.1);border-radius:3px;overflow:hidden;">
-            <div style="height:100%;width:${Math.round((c.progress / c.target) * 100)}%;background:${c.done ? 'var(--accent-green)' : 'linear-gradient(90deg,#5e6fff,#a855f7)'};border-radius:3px;transition:width 0.5s;"></div>
+          <div style="height:6px;background:var(--surface-strong);border-radius:3px;overflow:hidden;">
+            <div style="height:100%;width:${Math.round((c.progress / c.target) * 100)}%;background:${c.done ? 'var(--accent-green)' : 'linear-gradient(90deg,#ffb36b,#ff8a4c)'};border-radius:3px;transition:width 0.5s;"></div>
           </div>
         </div>
       `).join('')}
@@ -1399,18 +1399,18 @@ function showMentorModal() {
 
   const modal = createModal('🌱 成长伙伴', advice.persona);
   modal.querySelector('.modal-body')!.innerHTML = `
-      <div style="background:linear-gradient(135deg,rgba(94,111,255,0.12),rgba(168,85,247,0.12));border-radius:12px;padding:16px;margin-bottom:16px;">
+      <div style="background:linear-gradient(135deg,rgba(255,138,76,0.12),rgba(62,155,143,0.12));border-radius:12px;padding:16px;margin-bottom:16px;">
         <div style="font-size:13px;color:var(--text-muted);margin-bottom:6px;">${advice.greeting}</div>
       </div>
-      <div style="background:rgba(255,255,255,0.05);border-radius:12px;padding:14px;margin-bottom:14px;">
+      <div style="background:var(--surface-soft);border-radius:12px;padding:14px;margin-bottom:14px;">
         <div style="font-weight:600;margin-bottom:8px;">👁️ 我观察到</div>
         ${advice.observations.map((o) => `<div style="font-size:13px;color:var(--text-secondary);line-height:1.8;">• ${o}</div>`).join('')}
       </div>
-      <div style="background:rgba(94,111,255,0.08);border-radius:12px;padding:14px;margin-bottom:14px;">
+      <div style="background:rgba(255,138,76,0.08);border-radius:12px;padding:14px;margin-bottom:14px;">
         <div style="font-weight:600;margin-bottom:8px;color:var(--accent-blue);">💡 我的建议</div>
         ${advice.advices.map((a) => `<div style="font-size:13px;color:var(--text-secondary);line-height:1.8;">• ${a}</div>`).join('')}
       </div>
-      <div style="background:rgba(74,222,128,0.08);border-radius:12px;padding:14px;text-align:center;">
+      <div style="background:rgba(63,160,106,0.1);border-radius:12px;padding:14px;text-align:center;">
         <div style="font-size:14px;color:var(--accent-green);font-style:italic;line-height:1.6;">${advice.encouragement}</div>
       </div>
       <div style="font-size:11px;color:var(--text-muted);margin-top:16px;text-align:center;">伙伴建议由规则模板生成，仅作自我反思参考，不是专业心理咨询；如遇严重情绪困扰，请拨打心理援助热线 12356。<br>最终决定权，始终在你手中。</div>
@@ -1428,7 +1428,7 @@ function showMicroModal() {
   const renderTerms = () => `
     <div style="display:flex;flex-direction:column;gap:10px;">
       ${TERM_CARDS.map((t) => `
-        <div style="background:rgba(255,255,255,0.05);border-radius:12px;padding:14px;cursor:pointer;" onclick="this.querySelector('.term-detail').style.display=this.querySelector('.term-detail').style.display==='none'?'block':'none'">
+        <div style="background:var(--surface-soft);border-radius:12px;padding:14px;cursor:pointer;" onclick="this.querySelector('.term-detail').style.display=this.querySelector('.term-detail').style.display==='none'?'block':'none'">
           <div style="display:flex;align-items:center;gap:10px;">
             <span style="font-size:22px;">${t.icon}</span>
             <div style="flex:1;">
@@ -1446,7 +1446,7 @@ function showMicroModal() {
   const renderStages = () => `
     <div style="display:flex;flex-direction:column;gap:12px;">
       ${STAGE_GUIDES.map((s) => `
-        <div style="background:rgba(255,255,255,0.05);border-radius:12px;padding:14px;">
+        <div style="background:var(--surface-soft);border-radius:12px;padding:14px;">
           <div style="font-weight:600;margin-bottom:4px;">${s.stage} <span style="font-size:12px;color:var(--text-muted);font-weight:normal;">${s.ageRange}</span></div>
           <div style="font-size:13px;color:var(--accent-blue);margin-bottom:8px;">重心：${s.focus}</div>
           ${s.tips.map((t) => `<div style="font-size:13px;color:var(--text-secondary);line-height:1.7;">• ${t}</div>`).join('')}
@@ -1483,7 +1483,7 @@ function showGratitudeModal() {
       <div style="text-align:center;margin-bottom:16px;">
         <div style="font-size:48px;">💌</div>
       </div>
-      <div style="background:linear-gradient(135deg,rgba(251,191,36,0.1),rgba(248,113,113,0.1));border-radius:16px;padding:24px;margin-bottom:16px;border:1px solid rgba(251,191,36,0.2);">
+      <div style="background:linear-gradient(135deg,rgba(224,153,47,0.1),rgba(224,92,75,0.1));border-radius:16px;padding:24px;margin-bottom:16px;border:1px solid rgba(224,153,47,0.2);">
         <div style="font-size:18px;font-weight:bold;margin-bottom:16px;text-align:center;color:var(--accent-yellow);">${card.title}</div>
         <div style="font-size:15px;line-height:2;color:var(--text-secondary);text-align:center;">${card.content}</div>
         <div style="font-size:13px;color:var(--text-muted);text-align:right;margin-top:20px;">${card.signature}</div>
@@ -1532,7 +1532,7 @@ function showExportReportModal() {
 
   const modal = createModal('📄 导出成长报告', '生成纯文本报告，可保存或分享');
   modal.querySelector('.modal-body')!.innerHTML = `
-      <div style="background:rgba(255,255,255,0.05);border-radius:12px;padding:16px;margin-bottom:16px;max-height:400px;overflow-y:auto;">
+      <div style="background:var(--surface-soft);border-radius:12px;padding:16px;margin-bottom:16px;max-height:400px;overflow-y:auto;">
         <pre style="font-family:monospace;font-size:12px;line-height:1.6;white-space:pre-wrap;color:var(--text-secondary);">${text}</pre>
       </div>
       <div style="display:flex;gap:8px;">
