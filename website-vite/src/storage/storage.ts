@@ -31,6 +31,12 @@ function reviveDates(user: UserProfile): UserProfile {
   if (user.lifeEvents) {
     user.lifeEvents = user.lifeEvents.map((e) => ({ ...e, date: new Date(e.date as unknown as string) }));
   }
+  if (user.enhancedSurvey?.completedAt) {
+    user.enhancedSurvey = {
+      ...user.enhancedSurvey,
+      completedAt: new Date(user.enhancedSurvey.completedAt as unknown as string),
+    };
+  }
   return user;
 }
 

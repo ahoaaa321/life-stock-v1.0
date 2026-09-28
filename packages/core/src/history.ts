@@ -28,7 +28,7 @@ export function generateHistory(profile: {
     else if (age <= 17) annualSpend = Constants.AGE_SPEND['15-17'];
     else annualSpend = Constants.AGE_SPEND['18-22'];
     annualSpend = annualSpend * coef * (0.9 + Math.random() * 0.2);
-    history.push({ age, invest: annualSpend, type: 'education' });
+    history.push({ age, invest: annualSpend, type: 'education', source: 'estimated' });
   }
   if (profile.anchor) {
     const idx = profile.anchor.age;

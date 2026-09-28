@@ -3,7 +3,7 @@ import type { InvestType, Region, Area, IncomeLevel } from './types';
 // ============ 常量配置 ============
 
 /** 公式版本号：每次修改参数需升级，旧数据保留原版本计算结果 */
-export const FORMULA_VERSION = '1.2';
+export const FORMULA_VERSION = '1.3';
 
 /** 里程碑加成上限 */
 export const MILESTONE_BONUS_CAP = 200;

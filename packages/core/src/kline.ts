@@ -1,14 +1,28 @@
 import type { UserProfile, KlinePoint } from './types';
 import { calculateStock } from './formula';
 import { Constants } from './constants';
+import { verifiedAges, getIncomeAtAge, getIncomeGrowthAtAge, setbackSeverityAtAge } from './survey';
 
 // ============ K线（人生走势图）生成 ============
 
+/** 确定性伪随机（同一年龄每次渲染抖动一致，避免曲线反复跳动） */
+function seededNoise(seed: number): number {
+  const s = Math.sin(seed * 127.1 + 311.7) * 43758.5453;
+  return s - Math.floor(s); // 0~1
+}
+
 /**
  * 生成从出生到当前年龄的人生指数走势数据
+ *
+ * 数据来源优化（v1.3 强化调查）：
+ * - 含真实数据的年龄波动幅度收窄（±3.5%），纯估算年龄保持 ±8%
+ * - 当前年龄不抖动，与仪表盘实时指数严格一致
+ * - 历史年份收入/收入增速按职业轨迹重建
+ * - 用户记录的波折在对应年龄形成回撤（最多 -15%）
  */
 export function generateKline(user: UserProfile): KlinePoint[] {
   const points: KlinePoint[] = [];
+  const verified = verifiedAges(user);
   let cumulative = 0;
   for (let age = 0; age <= user.age; age++) {
     const yearHistory = user.history.filter((h) => h.age === age);
@@ -26,14 +40,29 @@ export function generateKline(user: UserProfile): KlinePoint[] {
     const tempUser: UserProfile = {
       ...user,
       age,
+      annualIncome: getIncomeAtAge(user, age),
+      annualIncomeGrowth: getIncomeGrowthAtAge(user, age),
       history: user.history.filter((h) => h.age <= age),
       investments: yearInv,
     };
     const snapshot = calculateStock(tempUser);
-    // 每年叠加 ±8% 随机扰动，模拟不确定性
-    const volatility = 1 + (Math.random() - 0.5) * 0.16;
-    const price = snapshot.price * volatility;
-    points.push({ age, price: Math.round(price * 10) / 10, invest: yearInvest, total: cumulative });
+    const isVerified = verified.has(age);
+    const isCurrent = age === user.age;
+    // 真实年份小波动，估算年份大波动，当前年不波动
+    const amplitude = isCurrent ? 0 : isVerified ? 0.035 : 0.08;
+    const volatility = 1 + (seededNoise(age + 1) - 0.5) * 2 * amplitude;
+    // 波折回撤：严重度 1~10 → 1.5%~15%
+    const sev = setbackSeverityAtAge(user, age);
+    const setbackFactor = sev > 0 ? 1 - (sev / 10) * 0.15 : 1;
+    const price = snapshot.price * volatility * setbackFactor;
+    points.push({
+      age,
+      price: Math.round(price * 10) / 10,
+      invest: yearInvest,
+      total: cumulative,
+      verified: isVerified,
+      setback: sev > 0,
+    });
   }
   return points;
 }

@@ -32,3 +32,4 @@ export * from './budget';
 export * from './analytics';
 export * from './events';
 export * from './alerts';
+export * from './survey';

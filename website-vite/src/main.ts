@@ -21,7 +21,7 @@ import { getMentorAdvice } from '@life-stock/core';
 import { TERM_CARDS, STAGE_GUIDES } from '@life-stock/core';
 import { generateGratitudeCard, getGratitudeTemplateCount } from '@life-stock/core';
 import { generateReportText } from '@life-stock/core';
-import type { Investment, InvestType, CustomType, Habit, GrowthTodo } from '@life-stock/core';
+import type { Investment, InvestType, CustomType, Habit, GrowthTodo, EnhancedSurveyInput, BigInvestInput, SurveySetbackInput } from '@life-stock/core';
 import {
   TYPE_META,
   dayKey, todayKey, parseKey, createHabit, toggleCheck, getHabitStatus, getHeatmap,
@@ -29,6 +29,7 @@ import {
   getBudgetStatus, categoryBreakdown, monthlyTrend,
   buildTimeline, addManualEvent, addSystemEvent, deleteEvent,
   evaluateAlert,
+  applyEnhancedSurvey, defaultEduStages, getSurveyCoverage,
 } from '@life-stock/core';
 import {
   saveUser, loadUser, clearUser, isDisclaimerConfirmed, confirmDisclaimer,
@@ -238,8 +239,19 @@ function showDashboard() {
   document.getElementById('dashConfidence')!.innerHTML =
     `<span style="color:${confColor};font-weight:bold;">● ${conf.label}</span> ` +
     `本指数含 ${estPct}% 估算成分` +
-    (conf.level !== 'high' ? `，<a href="javascript:showAnchorModal()" style="color:var(--accent-blue);text-decoration:underline;">校准后可降至 ${potPct}%</a>` : '') +
-    `<br><a href="javascript:showDetailModal()" style="color:var(--text-muted);text-decoration:underline;">查看数据来源 →</a>`;
+    (conf.level !== 'high'
+      ? `，<a href="javascript:showSurveyModal()" style="color:var(--accent);font-weight:600;text-decoration:underline;">📋 填强化调查表可降至 ${potPct}%</a>`
+      : '，真实数据充足') +
+    `<br><a href="javascript:showAnchorModal()" style="color:var(--text-muted);text-decoration:underline;">手动校准</a> · ` +
+    `<a href="javascript:showDetailModal()" style="color:var(--text-muted);text-decoration:underline;">数据来源</a>`;
+  // 曲线卡：强化调查完成状态
+  const surveyBadge = document.getElementById('surveyBadge');
+  if (surveyBadge) {
+    const cov = getSurveyCoverage(u);
+    surveyBadge.innerHTML = cov.verifiedYears > 0
+      ? `<a onclick="showSurveyModal()" style="font-size:12px;font-weight:600;color:var(--accent-green);cursor:pointer;">✓ 已精确化 ${cov.verifiedYears}/${cov.totalYears} 岁</a>`
+      : `<a onclick="showSurveyModal()" style="font-size:12.5px;font-weight:normal;cursor:pointer;color:var(--accent);">📋 强化调查</a>`;
+  }
 
   const kline = generateKline(u);
   drawKline(kline, u);
@@ -567,10 +579,15 @@ function drawKline(points: KlinePoint[], userObj: UserProfile) {
 
   const milestoneAges = [0, 6, 15, 18, 22, 30];
   points.forEach((p, i) => {
+    const x = pad.l + stepX * i; const y = pad.t + priceH * (1 - (p.price - minP) / range);
     if (milestoneAges.includes(p.age)) {
-      const x = pad.l + stepX * i; const y = pad.t + priceH * (1 - (p.price - minP) / range);
       ctx.beginPath(); ctx.arc(x, y, 5, 0, Math.PI * 2); ctx.fillStyle = '#3fa06a'; ctx.fill();
       ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 2; ctx.stroke();
+    } else if (p.verified) {
+      // 强化调查核实的非里程碑年份：墨绿空心环
+      ctx.beginPath(); ctx.arc(x, y, 3.5, 0, Math.PI * 2);
+      ctx.fillStyle = 'rgba(62,155,143,0.25)'; ctx.fill();
+      ctx.strokeStyle = '#3e9b8f'; ctx.lineWidth = 1.5; ctx.stroke();
     }
   });
 
@@ -583,8 +600,15 @@ function drawKline(points: KlinePoint[], userObj: UserProfile) {
 
   points.forEach((p, i) => {
     const x = pad.l + stepX * i; const barH = (p.invest / maxVol) * volH; const barW = Math.max(1, stepX * 0.5);
-    ctx.fillStyle = last.price >= prices[0] ? 'rgba(63,160,106,0.5)' : 'rgba(224,92,75,0.5)';
+    // v1.3：强化调查覆盖的真实年份用实心墨绿量柱，估算年份保持半透明
+    ctx.fillStyle = p.verified ? 'rgba(62,155,143,0.9)' : last.price >= prices[0] ? 'rgba(63,160,106,0.4)' : 'rgba(224,92,75,0.4)';
     ctx.fillRect(x - barW / 2, volTop + volH - barH, barW, barH);
+    // 波折年份：价格点下方红色下箭头
+    if (p.setback && i < points.length - 1) {
+      const y = pad.t + priceH * (1 - (p.price - minP) / range);
+      ctx.fillStyle = '#e05c4b'; ctx.font = '11px sans-serif'; ctx.textAlign = 'center';
+      ctx.fillText('▼', x, y + 14); ctx.textAlign = 'left';
+    }
   });
 
   const labelStep = Math.max(1, Math.floor(points.length / 8));
@@ -602,6 +626,18 @@ function drawKline(points: KlinePoint[], userObj: UserProfile) {
   ctx.fillStyle = '#6f6558'; ctx.fillText('MA5', pad.l + 66, pad.t + 8);
   ctx.fillStyle = '#e0992f'; ctx.fillRect(pad.l + 105, pad.t + 4, 12, 3);
   ctx.fillStyle = '#6f6558'; ctx.fillText('同龄人', pad.l + 121, pad.t + 8);
+  const hasVerified = points.some((p) => p.verified);
+  const hasSetback = points.some((p) => p.setback);
+  if (hasVerified) {
+    ctx.fillStyle = '#3e9b8f'; ctx.fillRect(pad.l + 175, pad.t + 4, 12, 3);
+    ctx.fillStyle = '#6f6558'; ctx.fillText('真实数据', pad.l + 191, pad.t + 8);
+  }
+  if (hasSetback) {
+    ctx.fillStyle = '#e05c4b'; ctx.font = '9px sans-serif';
+    ctx.fillText('▼', pad.l + (hasVerified ? 250 : 175), pad.t + 8);
+    ctx.fillStyle = '#6f6558'; ctx.font = '10px sans-serif';
+    ctx.fillText('波折', pad.l + (hasVerified ? 260 : 185), pad.t + 8);
+  }
 
   document.getElementById('klineAge')!.textContent = `（${last.age}岁，当前 ${Math.round(last.price)} 点）`;
 }
@@ -636,6 +672,14 @@ function showAnchorModal() {
   if (!user) return;
   const modal = createModal('🎯 校准指数', '用真实数据修正估算，提升指数置信度');
   modal.querySelector('.modal-body')!.innerHTML = `
+    <div onclick="closeModal();showSurveyModal()" style="display:flex;align-items:center;gap:10px;padding:12px 14px;margin-bottom:16px;border-radius:12px;background:linear-gradient(135deg,rgba(255,179,107,0.18),rgba(255,138,76,0.12));border:1px solid rgba(255,138,76,0.35);cursor:pointer;">
+      <span style="font-size:22px;">📋</span>
+      <div style="flex:1;">
+        <div style="font-weight:bold;font-size:13.5px;color:var(--accent-deep);">强化调查表（推荐）</div>
+        <div style="font-size:12px;color:var(--text-muted);">填写真实教育花费、职业轨迹与大额投入，一次性把整条 K 线校准成你的真实曲线</div>
+      </div>
+      <span style="color:var(--accent);font-size:16px;">→</span>
+    </div>
     <div style="display:grid;grid-template-columns:1fr;gap:16px;">
       <!-- B1-1：单笔投入反推校准 -->
       <div style="padding:12px;background:var(--surface-softer);border-radius:10px;">
@@ -2551,5 +2595,276 @@ function renderTodayStrip(u: UserProfile, stock: StockSnapshotLike) {
     </div>`;
 }
 type StockSnapshotLike = { price: number; change: number };
+
+// ============ v1.3 强化调查表（用真实履历校准 K 线） ============
+const SURVEY_TITLES = ['① 教育经历', '② 职业与收入', '③ 大额投入', '④ 当前状态', '⑤ 家庭与波折', '⑥ 确认应用'];
+const SURVEY_DESCS = [
+  '填真实的学费与培训花费，曲线会用真实数字替换对应年龄的统计估算；记不清就留空',
+  '有了工作轨迹，学生时代不再虚增收入贡献，工作后的成长曲线按你的真实涨薪节奏走',
+  '回忆几笔影响很大的真实投入（考研、留学、私教、证书…），记不清金额可填 0 只记事件',
+  '用现在的真实状态校准成长系数与质量系数',
+  '家庭支持单独计入累计成长值；波折会在对应年龄形成一次可解释的回撤',
+  '确认后，K 线将以真实数据为主、统计估算只补空白年份',
+];
+const SETBACK_OPTS: { t: SurveySetbackInput['type']; n: string }[] = [
+  { t: 'jobloss', n: '💼 工作变动' },
+  { t: 'illness', n: '🏥 健康风波' },
+  { t: 'loss', n: '🌧️ 失去与告别' },
+  { t: 'stagnate', n: '🪫 长期停滞' },
+];
+let surveyStep = 0;
+let surveyDraft: EnhancedSurveyInput | null = null;
+let surveyEduChecked: boolean[] = [];
+
+function defaultWorkStart(edu: string): number {
+  return edu === 'master' ? 25 : edu === 'bachelor' || edu === 'college' ? 22 : edu === 'senior' ? 18 : 16;
+}
+function eduAgeBand(age: number): string {
+  if (age <= 2) return '0-2';
+  if (age <= 5) return '3-5';
+  if (age <= 14) return '6-14';
+  if (age <= 17) return '15-17';
+  return '18-22';
+}
+function initSurveyDraft(u: UserProfile): EnhancedSurveyInput {
+  const saved = u.enhancedSurvey;
+  const presetRows = defaultEduStages(u);
+  surveyEduChecked = saved?.eduStages?.length
+    ? presetRows.map((p) => saved.eduStages!.some((s) => s.name === p.name))
+    : presetRows.map((p) => p.enrolled);
+  return {
+    eduStages: saved?.eduStages?.length
+      ? saved.eduStages.map((s) => ({ ...s }))
+      : presetRows.map((p) => ({ name: p.name, startAge: p.startAge, endAge: p.endAge, totalCost: 0 })),
+    bigInvests: saved?.bigInvests ? saved.bigInvests.map((b) => ({ ...b })) : [],
+    career: {
+      workStartAge: saved?.career?.workStartAge ?? defaultWorkStart(u.education),
+      startingSalary: saved?.career?.startingSalary,
+      avgRaisePct: saved?.career?.avgRaisePct ?? 5,
+      currentSalary: saved?.career?.currentSalary ?? u.annualIncome,
+    },
+    studyHours: saved?.studyHours ?? u.studyHours,
+    healthScore: saved?.healthScore ?? u.healthScore,
+    familySupportCapital: (saved?.familySupportCapital ?? u.familySupportCapital) || 0,
+    setbacks: saved?.setbacks ? saved.setbacks.map((s) => ({ ...s })) : [],
+  };
+}
+
+(window as any).showSurveyModal = function (step = 0) {
+  if (!user) return;
+  surveyStep = step;
+  surveyDraft = initSurveyDraft(user);
+  renderSurvey();
+};
+
+function svMoneyAttr(): string {
+  return isSensitiveConsented() ? '' : 'disabled';
+}
+
+function renderSurvey() {
+  if (!user || !surveyDraft) return;
+  const u = user;
+  const d = surveyDraft;
+  const moneyOK = isSensitiveConsented();
+  const i = surveyStep;
+  const modal = createModal('📋 强化调查 · ' + SURVEY_TITLES[i], SURVEY_DESCS[i]);
+  const dots = SURVEY_TITLES.map((_, k) =>
+    `<span class="sv-dot ${k === i ? 'active' : ''} ${k < i ? 'done' : ''}">${k < i ? '✓' : k + 1}</span>`).join('');
+  let body = `<div class="sv-dots">${dots}</div>`;
+
+  if (i === 0) {
+    body += `<div class="sv-tip">以下年龄为常规学制参考，可自行修改；勾选并填写总花费的阶段才会替换估算${moneyOK ? '' : '（未授权金额信息，金额框已停用，仅年龄/学历仍可确认）'}</div>`;
+    body += (d.eduStages || []).map((s, k) => {
+      const on = surveyEduChecked[k];
+      const years = Math.max(1, s.endAge - s.startAge + 1);
+      const mid = Constants.AGE_SPEND_RANGE[eduAgeBand(s.startAge)]?.mid || 30000;
+      return `<div class="sv-edu-row ${on ? '' : 'off'}">
+        <label style="display:flex;align-items:center;gap:6px;min-width:110px;font-weight:600;font-size:13px;cursor:pointer;">
+          <input type="checkbox" ${on ? 'checked' : ''} onchange="this.closest('.sv-edu-row').classList.toggle('off',!this.checked)"> ${s.name}
+        </label>
+        <span style="display:flex;align-items:center;gap:4px;font-size:12.5px;color:var(--text-secondary);">
+          <input type="number" class="sv-edu-start" value="${s.startAge}" min="0" max="${u.age}" style="width:52px;padding:6px;">
+          ~<input type="number" class="sv-edu-end" value="${s.endAge}" min="0" max="${u.age}" style="width:52px;padding:6px;">岁
+        </span>
+        <input type="number" class="sv-edu-cost" value="${s.totalCost || ''}" placeholder="总花费（参考约 ${Math.round(mid * years / 10000)} 万）" ${svMoneyAttr()} style="flex:1;min-width:150px;padding:8px 10px;font-size:13px;">
+      </div>`;
+    }).join('');
+  } else if (i === 1) {
+    body += `<div class="sv-field"><label>参加工作年龄</label>
+      <input type="number" id="svWorkStart" value="${d.career?.workStartAge ?? ''}" min="0" max="${u.age}" style="width:100%;padding:9px 12px;"></div>`;
+    body += `<div class="sv-field"><label>第一份工作年薪（元）${moneyOK ? '' : '· 未授权金额，已停用'}</label>
+      <input type="number" id="svStartSalary" value="${d.career?.startingSalary ?? ''}" placeholder="如 80000" ${svMoneyAttr()} style="width:100%;padding:9px 12px;"></div>`;
+    body += `<div class="sv-field"><label>年均加薪幅度（%，可为负）</label>
+      <input type="number" id="svRaise" value="${d.career?.avgRaisePct ?? 5}" step="0.5" style="width:100%;padding:9px 12px;"></div>`;
+    body += `<div class="sv-field"><label>当前年薪确认（元）${moneyOK ? '' : '· 未授权金额，已停用'}</label>
+      <input type="number" id="svCurrentSalary" value="${d.career?.currentSalary ?? ''}" ${svMoneyAttr()} style="width:100%;padding:9px 12px;"></div>`;
+    if (!moneyOK) body += `<div class="sv-tip">在隐私设置中授权金额信息后，可填写精确薪资；不填则沿用模型估算。</div>`;
+  } else if (i === 2) {
+    body += `<div class="sv-tip">这些投入会以真实类型计入对应年龄（技能会折旧、健康影响质量系数），让曲线拐点有真实依据。</div>`;
+    body += (d.bigInvests || []).map((b, k) => `
+      <div class="sv-subrow">
+        <select class="sv-bi-age" style="width:78px;">${ageOptions(u.age, b.age)}</select>
+        <select class="sv-bi-type" style="flex:1;min-width:96px;">${typeOptions(b.type)}</select>
+        <input type="number" class="sv-bi-amount" value="${b.amount || ''}" placeholder="金额，可空" ${svMoneyAttr()} style="width:110px;padding:7px;font-size:12.5px;">
+        <input type="text" class="sv-bi-desc" value="${esc(b.desc || '')}" placeholder="描述（可选）" style="flex:2;min-width:120px;padding:7px;font-size:12.5px;">
+        <button class="sv-del" onclick="svDelBigInvest(${k})">✕</button>
+      </div>`).join('');
+    body += `<button class="dash-btn" style="width:100%;margin-top:8px;" onclick="svAddBigInvest()">＋ 添加一笔真实投入</button>`;
+  } else if (i === 3) {
+    const hs = d.studyHours ?? 5;
+    const hp = d.healthScore ?? 70;
+    body += `<div class="sv-field"><label>现在平均每周学习 / 自我提升时长（小时）</label>
+      <input type="number" id="svHours" value="${hs}" min="0" max="40" step="0.5" style="width:100%;padding:9px 12px;"></div>`;
+    body += `<div class="sv-field"><label>当前健康状态自评：<b id="svHealthVal" style="color:var(--accent);">${hp}</b> / 100</label>
+      <input type="range" id="svHealth" min="0" max="100" value="${hp}" style="width:100%;" oninput="document.getElementById('svHealthVal').textContent=this.value"></div>
+      <div style="display:flex;justify-content:space-between;font-size:11.5px;color:var(--text-muted);"><span>0 很糟</span><span>50 一般</span><span>100 很好</span></div>`;
+  } else if (i === 4) {
+    body += `<div class="sv-field"><label>家庭累计支持（万元，选填）${moneyOK ? '' : '· 未授权金额，已停用'}</label>
+      <input type="number" id="svFamily" value="${d.familySupportCapital || 0}" min="0" step="1" ${svMoneyAttr()} style="width:100%;padding:9px 12px;">
+      <div style="font-size:11.5px;color:var(--text-muted);margin-top:4px;">父母/家庭对你的累计投入折算，不折旧、不乘权重，单独计入累计成长值。</div></div>`;
+    body += `<div class="field-label">经历过的重大波折（选填，用于解释曲线上的回撤）</div>`;
+    body += (d.setbacks || []).map((s, k) => `
+      <div class="sv-subrow">
+        <select class="sv-sb-age" style="width:78px;">${ageOptions(u.age, s.age)}</select>
+        <select class="sv-sb-type" style="flex:1;min-width:110px;">${SETBACK_OPTS.map((o) => `<option value="${o.t}" ${s.type === o.t ? 'selected' : ''}>${o.n}</option>`).join('')}</select>
+        <select class="sv-sb-sev" style="width:96px;">${[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((n) => `<option value="${n}" ${s.severity === n ? 'selected' : ''}>影响 ${n}/10</option>`).join('')}</select>
+        <button class="sv-del" onclick="svDelSetback(${k})">✕</button>
+      </div>`).join('');
+    body += `<button class="dash-btn" style="width:100%;margin-top:8px;" onclick="svAddSetback()">＋ 添加一段波折</button>`;
+  } else {
+    const preview = applyEnhancedSurvey(u, d);
+    const estBefore = Math.round(preview.before.estimatedRatio * 100);
+    const estAfter = Math.round(preview.after.estimatedRatio * 100);
+    const cov = preview.coverage;
+    const eduCount = (d.eduStages || []).filter((s) => s.totalCost > 0).length;
+    body += `<div class="sv-result">
+      <div class="sv-result-main">
+        <div><span class="sv-big">${estBefore}%</span><span class="sv-arrow">→</span><span class="sv-big" style="color:var(--accent-green);">${estAfter}%</span><div class="sv-cap">估算成分占比</div></div>
+        <div><span class="sv-big" style="font-size:18px;">${preview.before.label}</span><span class="sv-arrow">→</span><span class="sv-big" style="font-size:18px;color:var(--accent-green);">${preview.after.label}</span><div class="sv-cap">置信度</div></div>
+        <div><span class="sv-big" style="font-size:18px;">${cov.verifiedYears}<small style="font-size:12px;">/${cov.totalYears} 岁</small></span><div class="sv-cap">真实数据覆盖</div></div>
+      </div>
+      <ul class="sv-summary">
+        <li>📚 ${eduCount} 个教育阶段将用真实花费替换统计估算</li>
+        <li>💡 ${(d.bigInvests || []).length} 笔大额投入按真实年龄与类型计入</li>
+        <li>💼 职业轨迹：${d.career?.workStartAge ?? '?'} 岁参加工作${d.career?.avgRaisePct != null ? `，年均加薪 ${d.career.avgRaisePct}%` : ''}</li>
+        <li>💥 ${(d.setbacks || []).length} 段波折会在对应年龄形成可解释的回撤</li>
+        <li>📉 真实年份曲线波动收窄，当前点位与实时指数一致</li>
+      </ul>
+      <div class="sv-tip">数据只保存在本机，随时可重新填写；留空的年份继续使用统计区间估算。</div>
+    </div>`;
+  }
+
+  body += `<div class="form-actions" style="margin-top:18px;">
+    ${i > 0 ? '<button class="dash-btn" onclick="svGo(-1)">上一步</button>' : '<span></span>'}
+    ${i < 5
+      ? '<button class="btn-primary" onclick="svGo(1)">下一步 →</button>'
+      : '<button class="btn-primary" onclick="svApplySurvey()">✅ 应用到我的 K 线</button>'}
+  </div>`;
+  modal.querySelector('.modal-body')!.innerHTML = body;
+}
+
+function ageOptions(maxAge: number, selected?: number): string {
+  return Array.from({ length: maxAge + 1 }, (_, a) => `<option value="${a}" ${selected === a ? 'selected' : ''}>${a} 岁</option>`).join('');
+}
+function typeOptions(selected: InvestType): string {
+  return (Object.keys(TYPE_META) as InvestType[]).map((t) =>
+    `<option value="${t}" ${selected === t ? 'selected' : ''}>${TYPE_META[t].icon} ${TYPE_META[t].name}</option>`).join('');
+}
+
+/** 把当前步 DOM 写回 draft */
+function collectSurveyStep() {
+  if (!user || !surveyDraft) return;
+  const d = surveyDraft;
+  const i = surveyStep;
+  const num = (id: string) => {
+    const el = document.getElementById(id) as HTMLInputElement | null;
+    if (!el || el.disabled) return undefined;
+    const v = Number(el.value);
+    return el.value === '' || isNaN(v) ? undefined : v;
+  };
+  if (i === 0) {
+    const rows = document.querySelectorAll('.sv-edu-row');
+    surveyEduChecked = [];
+    d.eduStages = [];
+    rows.forEach((row, k) => {
+      const on = (row.querySelector('input[type=checkbox]') as HTMLInputElement).checked;
+      surveyEduChecked.push(on);
+      if (!on) return;
+      const start = Number((row.querySelector('.sv-edu-start') as HTMLInputElement).value);
+      const end = Number((row.querySelector('.sv-edu-end') as HTMLInputElement).value);
+      const costEl = row.querySelector('.sv-edu-cost') as HTMLInputElement;
+      const cost = costEl.disabled || costEl.value === '' ? 0 : Math.max(0, Number(costEl.value) || 0);
+      const name = defaultEduStages(user!)[k]?.name || `阶段${k + 1}`;
+      if (isFinite(start) && isFinite(end) && end >= start && start >= 0 && end <= user!.age) {
+        d.eduStages!.push({ name, startAge: start, endAge: end, totalCost: cost });
+      }
+    });
+  } else if (i === 1) {
+    d.career = {
+      workStartAge: num('svWorkStart'),
+      startingSalary: num('svStartSalary'),
+      avgRaisePct: num('svRaise'),
+      currentSalary: num('svCurrentSalary'),
+    };
+  } else if (i === 2) {
+    d.bigInvests = [...document.querySelectorAll('.sv-subrow')]
+      .filter((r) => r.querySelector('.sv-bi-age'))
+      .map((r) => ({
+        age: Number((r.querySelector('.sv-bi-age') as HTMLSelectElement).value),
+        type: (r.querySelector('.sv-bi-type') as HTMLSelectElement).value as InvestType,
+        amount: Math.max(0, Number((r.querySelector('.sv-bi-amount') as HTMLInputElement).value) || 0),
+        desc: ((r.querySelector('.sv-bi-desc') as HTMLInputElement).value || '').trim() || undefined,
+      })) as BigInvestInput[];
+  } else if (i === 3) {
+    d.studyHours = num('svHours');
+    d.healthScore = num('svHealth');
+  } else if (i === 4) {
+    const fam = num('svFamily');
+    if (fam !== undefined) d.familySupportCapital = fam;
+    d.setbacks = [...document.querySelectorAll('.sv-subrow')]
+      .filter((r) => r.querySelector('.sv-sb-age'))
+      .map((r) => ({
+        age: Number((r.querySelector('.sv-sb-age') as HTMLSelectElement).value),
+        type: (r.querySelector('.sv-sb-type') as HTMLSelectElement).value as SurveySetbackInput['type'],
+        severity: Number((r.querySelector('.sv-sb-sev') as HTMLSelectElement).value),
+      }));
+  }
+}
+
+(window as any).svGo = function (delta: number) {
+  collectSurveyStep();
+  surveyStep = Math.max(0, Math.min(5, surveyStep + delta));
+  renderSurvey();
+};
+(window as any).svAddBigInvest = function () {
+  collectSurveyStep();
+  surveyDraft!.bigInvests = [...(surveyDraft!.bigInvests || []), { age: user!.age, amount: 0, type: 'skill', desc: undefined }];
+  renderSurvey();
+};
+(window as any).svDelBigInvest = function (k: number) {
+  collectSurveyStep();
+  surveyDraft!.bigInvests = (surveyDraft!.bigInvests || []).filter((_, idx) => idx !== k);
+  renderSurvey();
+};
+(window as any).svAddSetback = function () {
+  collectSurveyStep();
+  surveyDraft!.setbacks = [...(surveyDraft!.setbacks || []), { age: user!.age - 1, type: 'stagnate', severity: 5 }];
+  renderSurvey();
+};
+(window as any).svDelSetback = function (k: number) {
+  collectSurveyStep();
+  surveyDraft!.setbacks = (surveyDraft!.setbacks || []).filter((_, idx) => idx !== k);
+  renderSurvey();
+};
+(window as any).svApplySurvey = function () {
+  if (!user || !surveyDraft) return;
+  collectSurveyStep();
+  const result = applyEnhancedSurvey(user, surveyDraft);
+  user = result.user;
+  saveUser(user);
+  closeModal();
+  showDashboard();
+  showToast(`✅ 已用真实数据重建 K 线（估算成分 ${Math.round(result.before.estimatedRatio * 100)}% → ${Math.round(result.after.estimatedRatio * 100)}%）`);
+};
 
 init();

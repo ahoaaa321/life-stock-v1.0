@@ -19,6 +19,8 @@ export interface ConfidenceInfo {
   estimatedRatio: number;
   /** 手动录入投入笔数 */
   manualCount: number;
+  /** 强化调查表录入的真实历史笔数 */
+  surveyCount: number;
   /** 估算笔数 */
   estimatedCount: number;
   label: string;
@@ -34,16 +36,18 @@ export interface ConfidenceInfo {
  */
 export function calcConfidence(user: UserProfile): ConfidenceInfo {
   const historyCount = user.history?.length || 0;
+  const surveyCount = (user.history || []).filter((h) => h.source === 'survey').length;
   const manualCount = user.investments?.length || 0;
   const total = historyCount + manualCount;
-  // 历史投入全部为估算；手动录入为高置信
-  const estimatedCount = historyCount;
+  // 仅模型生成的历史算估算；强化调查录入按真实数据对待
+  const estimatedCount = historyCount - surveyCount;
+  const realCount = surveyCount + manualCount;
   const estimatedRatio = total > 0 ? estimatedCount / total : 1;
 
   let level: ConfidenceLevel;
-  const manualRatio = total > 0 ? manualCount / total : 0;
-  if (manualRatio >= 0.5) level = 'high';
-  else if (manualRatio >= 0.2) level = 'medium';
+  const realRatio = total > 0 ? realCount / total : 0;
+  if (realRatio >= 0.5) level = 'high';
+  else if (realRatio >= 0.2) level = 'medium';
   else level = 'low';
 
   const labelMap: Record<ConfidenceLevel, string> = {
@@ -52,13 +56,16 @@ export function calcConfidence(user: UserProfile): ConfidenceInfo {
     low: '低置信',
   };
 
-  // 校准后（假设用户录入当前年龄一笔真实投入）的估算占比
-  const potentialEstimatedRatio = total > 0 ? estimatedCount / (total + 1) : 0.5;
+  // 完成一次强化调查（约覆盖 16 个学年）后的估算占比预演
+  const potentialEstimatedRatio = total > 0
+    ? Math.max(0, estimatedCount - 16) / Math.max(1, total)
+    : 0.5;
 
   return {
     level,
     estimatedRatio: Math.round(estimatedRatio * 100) / 100,
     manualCount,
+    surveyCount,
     estimatedCount,
     label: labelMap[level],
     potentialEstimatedRatio: Math.round(potentialEstimatedRatio * 100) / 100,

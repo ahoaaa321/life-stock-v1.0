@@ -10,6 +10,10 @@ export interface HistoryItem {
   age: number;
   invest: number;
   type: InvestType;
+  /** estimated=模型估算（默认）；survey=强化调查表录入的真实数据 */
+  source?: 'estimated' | 'survey';
+  /** 调查录入时的来源说明（如教育阶段名、大额投入描述） */
+  desc?: string;
 }
 
 export interface Investment {
@@ -163,6 +167,8 @@ export interface UserProfile {
   indexName?: string;
   /** 个性签名 */
   signature?: string;
+  /** 强化调查表档案（真实履历，用于提升 K 线准确度） */
+  enhancedSurvey?: EnhancedSurvey;
 
   /** 数据版本号，用于公式升级迁移 */
   version?: string;
@@ -190,6 +196,66 @@ export interface KlinePoint {
   price: number;
   invest: number;
   total: number;
+  /** 该年龄是否含强化调查的真实数据 */
+  verified?: boolean;
+  /** 该年龄是否发生了用户记录的波折 */
+  setback?: boolean;
+}
+
+/** 强化调查表：教育经历段 */
+export interface EduStageInput {
+  name: string;
+  startAge: number;
+  endAge: number;
+  /** 该阶段总花费（元） */
+  totalCost: number;
+}
+/** 强化调查表：印象深刻的大额投入 */
+export interface BigInvestInput {
+  age: number;
+  amount: number;
+  type: InvestType;
+  desc?: string;
+}
+/** 强化调查表：职业与收入轨迹 */
+export interface CareerInput {
+  /** 参加工作年龄 */
+  workStartAge?: number;
+  /** 第一份工作年薪（元） */
+  startingSalary?: number;
+  /** 年均加薪百分比，如 5 表示 5% */
+  avgRaisePct?: number;
+  /** 当前年薪确认（元） */
+  currentSalary?: number;
+}
+/** 强化调查表：历史波折 */
+export interface SurveySetbackInput {
+  age: number;
+  type: Setback['type'];
+  /** 1~10 */
+  severity: number;
+}
+/** 强化调查表完整输入（所有字段均可跳过） */
+export interface EnhancedSurveyInput {
+  eduStages?: EduStageInput[];
+  bigInvests?: BigInvestInput[];
+  career?: CareerInput;
+  studyHours?: number;
+  healthScore?: number;
+  familySupportCapital?: number;
+  setbacks?: SurveySetbackInput[];
+}
+/** 已保存的强化调查档案 */
+export interface EnhancedSurvey extends EnhancedSurveyInput {
+  completedAt: Date;
+}
+export interface SurveyCoverage {
+  /** 被真实数据覆盖的年数 */
+  verifiedYears: number;
+  /** 总年数（0~当前年龄） */
+  totalYears: number;
+  /** 0~1 */
+  ratio: number;
 }
 
 export interface Milestone {
