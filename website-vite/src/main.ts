@@ -1,4 +1,4 @@
-import type { UserProfile, InvestType, KlinePoint } from '@life-stock/core';
+import type { UserProfile, KlinePoint } from '@life-stock/core';
 import { Constants, MILESTONES, DATA_SOURCES } from '@life-stock/core';
 import { calculateStock, getStageCoef, decay, calculateBV, calcConfidence } from '@life-stock/core';
 import { generateHistory } from '@life-stock/core';
@@ -21,6 +21,15 @@ import { getMentorAdvice } from '@life-stock/core';
 import { TERM_CARDS, STAGE_GUIDES } from '@life-stock/core';
 import { generateGratitudeCard, getGratitudeTemplateCount } from '@life-stock/core';
 import { generateReportText } from '@life-stock/core';
+import type { Investment, InvestType, CustomType, Habit, GrowthTodo } from '@life-stock/core';
+import {
+  TYPE_META,
+  dayKey, todayKey, parseKey, createHabit, toggleCheck, getHabitStatus, getHeatmap,
+  createTodo, toggleDone, isOverdue, sortTodos,
+  getBudgetStatus, categoryBreakdown, monthlyTrend,
+  buildTimeline, addManualEvent, addSystemEvent, deleteEvent,
+  evaluateAlert,
+} from '@life-stock/core';
 import {
   saveUser, loadUser, clearUser, isDisclaimerConfirmed, confirmDisclaimer,
   exportUser, importUser, isPrivacyConsented, setPrivacyConsent,
@@ -201,6 +210,8 @@ function finishOnboarding() {
   closeModal();
   showDashboard();
   showToast(isSensitiveConsented() ? '✅ 成长曲线已生成！' : '✅ 成长曲线已生成（敏感项使用估算值）');
+  // 新用户引导一次个性名片（可跳过）
+  setTimeout(() => showProfileModal(true), 400);
 }
 
 // ============ 仪表盘 ============
@@ -233,6 +244,16 @@ function showDashboard() {
   const kline = generateKline(u);
   drawKline(kline, u);
 
+  // v1.3：预警线评估（穿越即提示，回落自动复位）
+  const alertRes = evaluateAlert(stock.price, u.priceAlert || {});
+  if (JSON.stringify(alertRes.alert) !== JSON.stringify(u.priceAlert || {})) {
+    u.priceAlert = alertRes.alert;
+    saveUser(u);
+  }
+  if (alertRes.targetNew) showToast('🎉 恭喜！成长指数突破目标位');
+  if (alertRes.floorNew) showToast('🟡 指数回到支撑位附近，正好打开「回落复盘」看看');
+  renderAlertBadge(u);
+
   // 未单独同意敏感信息时，金额输入框停用（仅记录事件）
   const amountInput = document.getElementById('investAmount') as HTMLInputElement | null;
   if (amountInput) {
@@ -245,6 +266,10 @@ function showDashboard() {
       amountInput.value = '';
     }
   }
+  const dateInput = document.getElementById('investDate') as HTMLInputElement | null;
+  if (dateInput && !dateInput.value) dateInput.value = todayKey();
+  // 投入分类（含自定义）
+  renderInvestTypeChips(u);
   // 里程碑列表
   renderMilestones(u);
   // 投入记录列表
@@ -253,39 +278,155 @@ function showDashboard() {
   renderJournals(u);
   // 每周一笔状态
   renderWeeklyStatus(u);
+  // v1.3 新卡片
+  renderTodayStrip(u, stock);
+  renderHabitCard(u);
+  renderTodoCard(u);
+  renderBudgetCard(u);
 }
 
 // ============ 记一笔投入 ============
-(window as any).selectInvestType = selectInvestType;
-function selectInvestType(type: InvestType) {
-  selectedInvestType = type;
-  document.querySelectorAll('.invest-type').forEach((el) => {
-    el.classList.toggle('selected', el.getAttribute('data-type') === type);
-  });
+let selectedCustomId: string | null = null;
+let investFilter = 'all';
+let investKeyword = '';
+
+(window as any).selectInvestKey = selectInvestKey;
+function selectInvestKey(key: string) {
+  if (!user) return;
+  if (key.startsWith('custom:')) {
+    selectedCustomId = key.slice(7);
+  } else {
+    selectedInvestType = key as InvestType;
+    selectedCustomId = null;
+  }
+  renderInvestTypeChips(user);
+}
+
+/** 当前表单选中的分类 */
+function currentSelection(u: UserProfile): TypeOption {
+  if (selectedCustomId) {
+    const c = (u.customTypes || []).find((x) => x.id === selectedCustomId && !x.archived);
+    if (c) return { key: 'custom:' + c.id, label: c.name, icon: c.icon, color: c.color, type: c.baseType, customId: c.id };
+    selectedCustomId = null;
+  }
+  const m = TYPE_META[selectedInvestType];
+  return { key: selectedInvestType, label: m.name, icon: m.icon, color: m.color, type: selectedInvestType };
+}
+
+function renderInvestTypeChips(u: UserProfile) {
+  const box = document.getElementById('investTypes');
+  if (!box) return;
+  const sel = currentSelection(u).key;
+  box.innerHTML = getTypeOptions(u).map((o) =>
+    `<div class="invest-type ${sel === o.key ? 'selected' : ''}" data-key="${o.key}" onclick="selectInvestKey('${o.key}')">${o.icon} ${esc(o.label)}</div>`,
+  ).join('') + `<div class="invest-type invest-type-add" onclick="showCustomTypeManager()">＋ 分类</div>`;
 }
 
 (window as any).addInvestment = addInvestment;
 function addInvestment() {
   if (!user) return;
+  const u = user;
   const amountEl = document.getElementById('investAmount') as HTMLInputElement;
   const descEl = document.getElementById('investDesc') as HTMLInputElement;
+  const dateEl = document.getElementById('investDate') as HTMLInputElement | null;
   const sensitive = isSensitiveConsented();
   const amount = sensitive ? Number(amountEl.value) : 0;
-  if (sensitive && (!amount || amount <= 0)) { showToast('请输入有效金额，或留空仅记录事件'); return; }
-  user.investments.push({
-    type: selectedInvestType,
+  if (sensitive && amountEl.value && (!amount || amount < 0)) { showToast('请输入有效金额，或留空仅记录事件'); return; }
+  const opt = currentSelection(u);
+  const date = dateEl && dateEl.value ? parseKey(dateEl.value) : new Date();
+  u.investments.push({
+    type: opt.type,
+    customType: opt.customId,
     amount,
-    desc: descEl.value || undefined,
-    date: new Date(),
+    desc: descEl.value.trim() || undefined,
+    date,
   });
-  user.totalInvest += amount;
+  u.totalInvest += amount;
   amountEl.value = '';
   descEl.value = '';
-  saveUser(user);
+  if (dateEl) dateEl.value = todayKey();
+  saveUser(u);
   showDashboard();
   showToast(sensitive && amount > 0
     ? `✅ 已记录这笔投入 ${amount.toLocaleString()} 元，成长指数已更新`
     : '✅ 已记录这笔投入，成长指数已更新');
+}
+
+(window as any).editInvest = editInvest;
+(window as any).deleteInvest = deleteInvest;
+function editInvest(idx: number) {
+  if (!user) return;
+  const u = user;
+  const inv = u.investments[idx];
+  if (!inv) return;
+  const sensitive = isSensitiveConsented();
+  const curKey = inv.customType ? 'custom:' + inv.customType : inv.type;
+  const modal = createModal('✏️ 编辑这笔投入', '修改日期、分类、金额或描述，指数会按新内容重算');
+  modal.querySelector('.modal-body')!.innerHTML = `
+    <label style="font-size:13px;font-weight:bold;">日期</label>
+    <input type="date" id="editInvDate" value="${dayKey(new Date(inv.date))}" max="${todayKey()}" style="width:100%;margin:6px 0 14px;">
+    <label style="font-size:13px;font-weight:bold;">分类</label>
+    <div id="editInvTypes" style="display:flex;flex-wrap:wrap;gap:6px;margin:6px 0 14px;">
+      ${getTypeOptions(u).map((o) =>
+        `<div class="invest-type ${curKey === o.key ? 'selected' : ''}" onclick="document.querySelectorAll('#editInvTypes .invest-type').forEach(x=>x.classList.remove('selected'));this.classList.add('selected');this.parentNode.dataset.key='${o.key}';">${o.icon} ${esc(o.label)}</div>`).join('')}
+    </div>
+    <label style="font-size:13px;font-weight:bold;">金额（元）${sensitive ? '' : '· 未授权金额，已停用'}</label>
+    <input type="number" id="editInvAmount" value="${inv.amount || ''}" ${sensitive ? '' : 'disabled'} placeholder="可留空，仅记录事件" style="width:100%;margin:6px 0 14px;">
+    <label style="font-size:13px;font-weight:bold;">描述</label>
+    <input type="text" id="editInvDesc" value="${esc(inv.desc || '')}" placeholder="可选" style="width:100%;margin:6px 0 14px;">
+    <div class="form-actions" style="justify-content:space-between;">
+      <button class="dash-btn danger" onclick="deleteInvest(${idx})">🗑 删除这笔</button>
+      <button class="btn-primary" onclick="saveInvestEdit(${idx})">保存</button>
+    </div>`;
+  (document.getElementById('editInvTypes') as HTMLElement).dataset.key = curKey;
+}
+
+(window as any).saveInvestEdit = saveInvestEdit;
+function saveInvestEdit(idx: number) {
+  if (!user) return;
+  const u = user;
+  const inv = u.investments[idx];
+  if (!inv) return;
+  const key = (document.getElementById('editInvTypes') as HTMLElement).dataset.key || inv.type;
+  const opt = getTypeOptions(u).find((o) => o.key === key);
+  const dateVal = (document.getElementById('editInvDate') as HTMLInputElement).value;
+  const amount = isSensitiveConsented() ? Number((document.getElementById('editInvAmount') as HTMLInputElement).value) || 0 : inv.amount;
+  const desc = (document.getElementById('editInvDesc') as HTMLInputElement).value.trim();
+  inv.date = dateVal ? parseKey(dateVal) : inv.date;
+  inv.type = opt ? opt.type : inv.type;
+  inv.customType = opt?.customId;
+  inv.amount = amount;
+  inv.desc = desc || undefined;
+  u.totalInvest = u.investments.reduce((s, i) => s + (i.amount || 0), 0);
+  saveUser(u);
+  closeModal();
+  showDashboard();
+  showToast('✅ 已保存修改');
+}
+
+function deleteInvest(idx: number) {
+  if (!user) return;
+  const u = user;
+  const inv = u.investments[idx];
+  if (!inv) return;
+  if (!confirm(`确定删除这笔「${inv.desc || invDisplay(u, inv).name}」记录吗？`)) return;
+  u.investments.splice(idx, 1);
+  u.totalInvest = u.investments.reduce((s, i) => s + (i.amount || 0), 0);
+  saveUser(u);
+  closeModal();
+  showDashboard();
+  showToast('已删除');
+}
+
+(window as any).setInvestFilter = setInvestFilter;
+function setInvestFilter(key: string) {
+  investFilter = key;
+  if (user) renderInvestList(user);
+}
+(window as any).setInvestKeyword = setInvestKeyword;
+function setInvestKeyword(v: string) {
+  investKeyword = v.trim();
+  if (user) renderInvestList(user);
 }
 
 function renderMilestones(u: UserProfile) {
@@ -303,20 +444,48 @@ function renderMilestones(u: UserProfile) {
 }
 
 function renderInvestList(u: UserProfile) {
+  const filterBar = document.getElementById('investFilterBar');
+  if (filterBar) {
+    const opts = [{ key: 'all', label: '全部' }, ...getTypeOptions(u)];
+    filterBar.innerHTML = opts.map((o) => {
+      const label = 'label' in o ? o.label : (o as any).label;
+      const key = (o as any).key;
+      return `<span class="filter-chip ${investFilter === key ? 'active' : ''}" onclick="setInvestFilter('${key}')">${label}</span>`;
+    }).join('');
+  }
   const list = document.getElementById('investList')!;
   if (u.investments.length === 0) {
     list.innerHTML = '<div style="text-align:center;color:var(--text-secondary);padding:30px;">还没有投入记录，记一笔试试吧</div>';
     return;
   }
-  const typeIcon: Record<string, string> = { education: '🎓', skill: '📚', health: '💪', network: '🤝', entertainment: '🎮', other: '📦' };
-  list.innerHTML = u.investments.slice().reverse().map((inv) => `
+  const rows = u.investments.map((inv, idx) => ({ inv, idx, disp: invDisplay(u, inv) }))
+    .filter(({ inv, disp }) => {
+      if (investFilter !== 'all') {
+        const key = inv.customType ? 'custom:' + inv.customType : inv.type;
+        if (key !== investFilter) return false;
+      }
+      if (investKeyword) {
+        const hay = `${inv.desc || ''}${disp.name}`.toLowerCase();
+        if (!hay.includes(investKeyword.toLowerCase())) return false;
+      }
+      return true;
+    })
+    .reverse();
+  if (rows.length === 0) {
+    list.innerHTML = '<div style="text-align:center;color:var(--text-muted);padding:24px;">没有符合条件的记录</div>';
+    return;
+  }
+  list.innerHTML = rows.map(({ inv, idx, disp }) => `
     <div class="invest-item">
-      <span class="i-type">${typeIcon[inv.type] || '📦'}</span>
+      <span class="i-type" style="${inv.customType ? `background:${disp.color}22;` : ''}">${disp.icon}</span>
       <div class="i-info">
-        <div>${inv.desc || inv.type} ${inv.impact ? '<span class="i-impact">⭐ 影响大</span>' : ''}</div>
+        <div>${esc(inv.desc || disp.name)} <span style="font-size:10px;color:${disp.color};font-weight:bold;">${esc(disp.name)}</span> ${inv.impact ? '<span class="i-impact">⭐ 影响大</span>' : ''}</div>
         <div style="font-size:11px;color:var(--text-muted);">${new Date(inv.date).toLocaleDateString('zh-CN')}</div>
       </div>
-      <span class="i-amount">${inv.amount > 0 ? inv.amount.toLocaleString() + ' 元' : '未填金额'}</span>
+      <span class="i-amount">${inv.amount > 0 ? inv.amount.toLocaleString() + ' 元' : '事件'}</span>
+      <span class="i-actions">
+        <span class="i-edit" title="编辑" onclick="editInvest(${idx})">✏️</span>
+      </span>
     </div>
   `).join('');
 }
@@ -367,6 +536,20 @@ function drawKline(points: KlinePoint[], userObj: UserProfile) {
     ctx.fillStyle = '#c9871f'; ctx.font = 'bold 10px sans-serif';
     ctx.fillText('同龄人 ' + Math.round(peerPrice) + ' 点', w - pad.r + 3, peerY + 3);
   }
+
+  // v1.3：用户预警线（目标位/支撑位）
+  const alert = userObj.priceAlert;
+  const drawAlertLine = (value: number | undefined, color: string, label: string) => {
+    if (!value || value < minP || value > maxP) return;
+    const y = pad.t + priceH * (1 - (value - minP) / range);
+    ctx.strokeStyle = color; ctx.lineWidth = 1.4; ctx.setLineDash([8, 4]);
+    ctx.beginPath(); ctx.moveTo(pad.l, y); ctx.lineTo(w - pad.r, y); ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.fillStyle = color; ctx.font = 'bold 10px sans-serif';
+    ctx.fillText(`${label} ${value} 点`, pad.l + 4, y - 4);
+  };
+  drawAlertLine(alert?.target, '#3fa06a', '🎯 目标');
+  drawAlertLine(alert?.floor, '#e05c4b', '🟡 支撑');
 
   const grad = ctx.createLinearGradient(0, pad.t, 0, pad.t + priceH);
   grad.addColorStop(0, 'rgba(255,138,76,0.3)'); grad.addColorStop(1, 'rgba(255,138,76,0)');
@@ -587,7 +770,9 @@ function showShareModal() {
   const modal = createModal('📤 分享', '生成专属指数卡片');
   modal.querySelector('.modal-body')!.innerHTML = `
     <div style="background:linear-gradient(135deg,#ffb36b,#ff8a4c 60%,#f2702e);padding:24px;border-radius:16px;text-align:center;color:#fff;box-shadow:0 12px 32px rgba(255,138,76,0.28);">
-      <div style="font-size:12px;color:rgba(255,255,255,0.85);margin-bottom:8px;letter-spacing:2px;">今日宜长进 · 成长指数手账</div>
+      <div style="font-size:26px;margin-bottom:4px;">${u.avatar || '🌱'}</div>
+      <div style="font-size:13px;color:rgba(255,255,255,0.95);font-weight:bold;margin-bottom:2px;">${u.nickname ? esc(u.nickname) + ' 的' : ''}${u.indexName ? esc(u.indexName) : '成长指数'}</div>
+      <div style="font-size:11px;color:rgba(255,255,255,0.75);margin-bottom:10px;letter-spacing:1px;">今日宜长进 · 成长指数手账${u.signature ? ' · ' + esc(u.signature) : ''}</div>
       <div style="font-size:42px;font-weight:bold;color:#fff;">${Math.round(stock.price)} 点</div>
       <div style="color:rgba(255,255,255,0.92);margin-bottom:16px;">${stock.change >= 0 ? '+' : ''}${stock.change}%</div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
@@ -1565,5 +1750,806 @@ function downloadReport() {
   URL.revokeObjectURL(url);
   showToast('✅ 报告已下载');
 }
+
+// =====================================================================
+// ============ v1.3 个性化与互动功能 ============
+// =====================================================================
+
+function esc(s: unknown): string {
+  return String(s ?? '').replace(/[&<>"']/g, (c) =>
+    ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c] as string));
+}
+
+interface TypeOption {
+  key: string;
+  label: string;
+  icon: string;
+  color: string;
+  type: InvestType;
+  customId?: string;
+}
+
+function activeCustomTypes(u: UserProfile): CustomType[] {
+  return (u.customTypes || []).filter((c) => !c.archived);
+}
+function getTypeOptions(u: UserProfile): TypeOption[] {
+  const builtins = (Object.keys(TYPE_META) as InvestType[]).map((t) => ({
+    key: t, label: TYPE_META[t].name, icon: TYPE_META[t].icon, color: TYPE_META[t].color, type: t,
+  }));
+  const customs = activeCustomTypes(u).map((c) => ({
+    key: 'custom:' + c.id, label: c.name, icon: c.icon, color: c.color, type: c.baseType, customId: c.id,
+  }));
+  return [...builtins, ...customs];
+}
+function invDisplay(u: UserProfile, inv: Investment): { icon: string; name: string; color: string } {
+  if (inv.customType) {
+    const c = (u.customTypes || []).find((x) => x.id === inv.customType);
+    if (c) return { icon: c.icon, name: c.name, color: c.color };
+  }
+  const m = TYPE_META[inv.type] || TYPE_META.other;
+  return { icon: m.icon, name: m.name, color: m.color };
+}
+
+/** 通用 emoji/颜色小芯片选择 */
+(window as any).selectChip = function (groupId: string, el: HTMLElement, value: string) {
+  const box = document.getElementById(groupId)!;
+  box.querySelectorAll('.picker-chip').forEach((x) => x.classList.remove('selected'));
+  el.classList.add('selected');
+  box.dataset.value = value;
+};
+function chipPicker(groupId: string, values: string[], selected: string, kind: 'emoji' | 'color'): string {
+  return `<div id="${groupId}" class="${kind}-picker picker-row" data-value="${esc(selected)}">
+    ${values.map((v) => {
+      const active = v === selected;
+      const inner = kind === 'color'
+        ? `<span class="color-dot" style="background:${v}"></span>`
+        : v;
+      return `<span class="picker-chip ${active ? 'selected' : ''}" onclick="selectChip('${groupId}',this,'${v}')">${inner}</span>`;
+    }).join('')}
+  </div>`;
+}
+
+// ---------- 自定义分类 ----------
+const CATEGORY_ICONS = ['📦', '📖', '🎨', '🎸', '💻', '🌱', '🧠', '🙏', '☕', '🚶', '🧩', '🗼'];
+const CATEGORY_COLORS = ['#ff8a4c', '#f5a623', '#3fa06a', '#3e9b8f', '#e0705b', '#7d8cf6', '#b06fd0', '#a79b8c'];
+
+(window as any).showCustomTypeManager = showCustomTypeManager;
+function showCustomTypeManager(editId?: string) {
+  if (!user) return;
+  const u = user;
+  const editing = editId ? (u.customTypes || []).find((c) => c.id === editId) : null;
+  const baseOptions = (Object.keys(TYPE_META) as InvestType[])
+    .map((t) => `<option value="${t}" ${editing?.baseType === t ? 'selected' : ''}>${TYPE_META[t].icon} ${TYPE_META[t].name}（计入${TYPE_META[t].name}维度）</option>`).join('');
+  const modal = createModal('🏷️ 自定义分类', '新增你自己的投入分类；它会归入一个内置维度参与指数计算');
+  modal.querySelector('.modal-body')!.innerHTML = `
+    <div id="ctList" style="display:flex;flex-direction:column;gap:8px;margin-bottom:18px;">
+      ${(u.customTypes || []).length === 0 ? '<div style="color:var(--text-muted);font-size:13px;text-align:center;padding:8px;">还没有自定义分类</div>' : ''}
+      ${(u.customTypes || []).map((c) => `
+        <div class="ct-row ${c.archived ? 'archived' : ''}">
+          <span class="ct-icon" style="background:${c.color}22;color:${c.color}">${c.icon}</span>
+          <span class="ct-name">${esc(c.name)} <small>→ ${TYPE_META[c.baseType].name}</small></span>
+          <span class="ct-ops">
+            ${c.archived
+              ? `<a onclick="ctRestore('${c.id}')">恢复</a> <a class="danger-link" onclick="ctDelete('${c.id}')">彻底删除</a>`
+              : `<a onclick="showCustomTypeManager('${c.id}')">编辑</a> <a onclick="ctArchive('${c.id}')">归档</a>`}
+          </span>
+        </div>`).join('')}
+    </div>
+    <div class="sub-form" id="ctForm">
+      <div style="font-weight:bold;margin-bottom:10px;">${editing ? '编辑分类' : '新建分类'}</div>
+      <input type="text" id="ctName" placeholder="分类名称，如：日语课 / 考研 / 马拉松" value="${esc(editing?.name || '')}" style="width:100%;margin-bottom:10px;">
+      <label class="field-label">图标</label>
+      ${chipPicker('ctIcon', CATEGORY_ICONS, editing?.icon || '📦', 'emoji')}
+      <label class="field-label">颜色</label>
+      ${chipPicker('ctColor', CATEGORY_COLORS, editing?.color || '#ff8a4c', 'color')}
+      <label class="field-label">归入维度（影响权重与折旧）</label>
+      <select id="ctBase" style="width:100%;margin:6px 0 14px;">${baseOptions}</select>
+      <div class="form-actions">
+        ${editing ? '<button class="dash-btn" onclick="showCustomTypeManager()">取消</button>' : ''}
+        <button class="btn-primary" onclick="ctSave('${editing?.id || ''}')">${editing ? '保存修改' : '＋ 添加分类'}</button>
+      </div>
+    </div>`;
+}
+
+(window as any).ctSave = function (editId: string) {
+  if (!user) return;
+  const name = (document.getElementById('ctName') as HTMLInputElement).value.trim();
+  if (!name) { showToast('请填写分类名称'); return; }
+  const icon = document.getElementById('ctIcon')!.dataset.value || '📦';
+  const color = document.getElementById('ctColor')!.dataset.value || '#ff8a4c';
+  const baseType = (document.getElementById('ctBase') as HTMLSelectElement).value as InvestType;
+  const list = user.customTypes || (user.customTypes = []);
+  if (editId) {
+    const c = list.find((x) => x.id === editId);
+    if (c) Object.assign(c, { name, icon, color, baseType });
+  } else {
+    if (list.some((c) => c.name === name && !c.archived)) { showToast('已有同名分类'); return; }
+    list.push({ id: 'ct_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6), name, icon, color, baseType });
+  }
+  saveUser(user);
+  showCustomTypeManager();
+  showDashboard();
+  showToast('✅ 分类已保存');
+};
+(window as any).ctArchive = function (id: string) {
+  if (!user) return;
+  const c = user.customTypes!.find((x) => x.id === id);
+  if (c) c.archived = true;
+  saveUser(user); showCustomTypeManager(); showDashboard();
+};
+(window as any).ctRestore = function (id: string) {
+  if (!user) return;
+  const c = user.customTypes!.find((x) => x.id === id);
+  if (c) c.archived = false;
+  saveUser(user); showCustomTypeManager(); showDashboard();
+};
+(window as any).ctDelete = function (id: string) {
+  if (!user) return;
+  if (!confirm('彻底删除后，相关记录会回到它归入的内置分类下，确定吗？')) return;
+  user.customTypes = (user.customTypes || []).filter((c) => c.id !== id);
+  user.investments.forEach((inv) => { if (inv.customType === id) inv.customType = undefined; });
+  saveUser(user); showCustomTypeManager(); showDashboard();
+};
+
+// ---------- 个性名片 ----------
+const AVATARS = ['🌱', '☀️', '🌙', '⭐', '🔥', '🍀', '🌻', '🍊', '🐱', '🐰', '🦊', '🐻', '🐼', '🐨', '🦁', '🐯', '🐸', '🐵', '🦉', '🐳', '🎈', '💎', '🚀', '🏔️'];
+
+(window as any).showProfileModal = showProfileModal;
+function showProfileModal(firstRun = false) {
+  if (!user) return;
+  const u = user;
+  const modal = createModal(firstRun ? '👋 打造你的专属名片' : '👤 个性化名片', firstRun ? '给自己起个名字、选个头像，让这只"成长指数"真正属于你（可跳过）' : '昵称、头像与指数名称会出现在仪表盘和分享卡上');
+  modal.querySelector('.modal-body')!.innerHTML = `
+    <label class="field-label">头像</label>
+    ${chipPicker('pAvatar', AVATARS, u.avatar || '🌱', 'emoji')}
+    <label class="field-label">昵称</label>
+    <input type="text" id="pNickname" maxlength="12" placeholder="怎么称呼你？" value="${esc(u.nickname || '')}" style="width:100%;margin:6px 0 14px;">
+    <label class="field-label">我的指数名称</label>
+    <input type="text" id="pIndexName" maxlength="14" placeholder="如：阿长进指数 / 小树苗成长指数" value="${esc(u.indexName || '')}" style="width:100%;margin:6px 0 14px;">
+    <label class="field-label">一句话签名</label>
+    <input type="text" id="pSignature" maxlength="30" placeholder="如：日拱一卒，功不唐捐" value="${esc(u.signature || '')}" style="width:100%;margin:6px 0 14px;">
+    <div class="form-actions" style="justify-content:space-between;">
+      ${firstRun ? '<button class="dash-btn" onclick="closeModal()">稍后再说</button>' : '<button class="dash-btn" onclick="showCustomTypeManager()">🏷️ 管理分类</button>'}
+      <button class="btn-primary" onclick="profileSave(${firstRun})">保存名片</button>
+    </div>`;
+}
+
+(window as any).profileSave = function (firstRun: boolean) {
+  if (!user) return;
+  user.avatar = document.getElementById('pAvatar')!.dataset.value || '🌱';
+  user.nickname = (document.getElementById('pNickname') as HTMLInputElement).value.trim() || undefined;
+  user.indexName = (document.getElementById('pIndexName') as HTMLInputElement).value.trim() || undefined;
+  user.signature = (document.getElementById('pSignature') as HTMLInputElement).value.trim() || undefined;
+  saveUser(user);
+  closeModal();
+  showDashboard();
+  showToast('✅ 名片已保存');
+};
+
+// ---------- 月度预算 ----------
+function renderBudgetCard(u: UserProfile) {
+  const box = document.getElementById('budgetBody');
+  if (!box) return;
+  const sensitive = isSensitiveConsented();
+  const st = getBudgetStatus(u, { sensitive });
+  const unit = st.mode === 'amount' ? '元' : '笔';
+  if (st.budget === null) {
+    box.innerHTML = `
+      <div style="font-size:12.5px;color:var(--text-secondary);line-height:1.7;margin-bottom:12px;">
+        给本月的成长投入定个小目标${sensitive ? '（金额）' : '（笔数）'}，让投入像记账一样有节奏。
+      </div>
+      <button class="btn-primary" style="width:100%;" onclick="showBudgetModal()">🎯 设置本月预算</button>`;
+    return;
+  }
+  const pct = Math.min(100, Math.round((st.ratio || 0) * 100));
+  const barColor = st.overrun ? 'var(--accent-red)' : pct >= 80 ? 'var(--accent-yellow)' : 'var(--accent-green)';
+  const deltaTxt = st.deltaPct === null ? '上月无记录' :
+    `${st.deltaPct >= 0 ? '↑' : '↓'} 比上月${Math.abs(Math.round(st.deltaPct * 100))}%`;
+  box.innerHTML = `
+    <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:8px;">
+      <span style="font-size:22px;font-weight:bold;color:${st.overrun ? 'var(--accent-red)' : 'var(--text-primary)'}">${Math.round(st.spent).toLocaleString()} <span style="font-size:12px;font-weight:normal;">/ ${st.budget.toLocaleString()} ${unit}</span></span>
+      <a style="font-size:12px;cursor:pointer;" onclick="showBudgetModal()">⚙️ 调整</a>
+    </div>
+    <div class="budget-bar"><div class="budget-fill" style="width:${pct}%;background:${barColor};"></div></div>
+    <div style="display:flex;justify-content:space-between;font-size:11.5px;color:var(--text-muted);margin-top:8px;">
+      <span>${st.overrun ? `已超 ${Math.round(-st.remaining!).toLocaleString()} ${unit}` : `还可投入 ${Math.round(st.remaining!).toLocaleString()} ${unit}`}</span>
+      <span>日均 ${st.dailyAvg.toFixed(1)} ${unit} · ${deltaTxt}</span>
+    </div>`;
+}
+
+(window as any).showBudgetModal = showBudgetModal;
+function showBudgetModal() {
+  if (!user) return;
+  const sensitive = isSensitiveConsented();
+  const cur = sensitive ? (user.monthlyBudget || '') : (user.monthlyCountBudget || '');
+  const modal = createModal('🎯 月度预算', sensitive
+    ? '设定每月愿意为自己投入的金额上限，仅存本机'
+    : '你尚未授权金额信息，可按每月投入笔数设定节奏');
+  modal.querySelector('.modal-body')!.innerHTML = `
+    <input type="number" id="budgetInput" value="${cur}" placeholder="${sensitive ? '如 2000（元/月）' : '如 8（笔/月）'}" style="width:100%;margin-bottom:14px;">
+    <div class="form-actions" style="justify-content:space-between;">
+      <button class="dash-btn" onclick="budgetClear()">取消预算</button>
+      <button class="btn-primary" onclick="budgetSave()">保存</button>
+    </div>`;
+}
+(window as any).budgetSave = function () {
+  if (!user) return;
+  const v = Number((document.getElementById('budgetInput') as HTMLInputElement).value);
+  if (!v || v <= 0) { showToast('请输入大于 0 的数字'); return; }
+  if (isSensitiveConsented()) user.monthlyBudget = v;
+  else user.monthlyCountBudget = v;
+  saveUser(user); closeModal(); showDashboard(); showToast('✅ 预算已设置');
+};
+(window as any).budgetClear = function () {
+  if (!user) return;
+  user.monthlyBudget = undefined;
+  user.monthlyCountBudget = undefined;
+  saveUser(user); closeModal(); showDashboard();
+};
+
+// ---------- 分类分析 ----------
+let analyticsYear = new Date().getFullYear();
+let analyticsMonth = new Date().getMonth();
+(window as any).showAnalyticsModal = showAnalyticsModal;
+function showAnalyticsModal(delta = 0) {
+  if (!user) return;
+  const u = user;
+  if (delta !== 0) {
+    const d = new Date(analyticsYear, analyticsMonth + delta, 1);
+    analyticsYear = d.getFullYear();
+    analyticsMonth = d.getMonth();
+  }
+  const sensitive = isSensitiveConsented();
+  const slices = categoryBreakdown(u, analyticsYear, analyticsMonth);
+  const trend = monthlyTrend(u, 6);
+  const maxTrend = Math.max(1, ...trend.map((t) => t.amount));
+  const totalAmount = slices.reduce((s, x) => s + x.amount, 0);
+  const totalCount = slices.reduce((s, x) => s + x.count, 0);
+  const modal = createModal('📈 投入分析', '看看你的成长投入都花在了哪些地方');
+  modal.querySelector('.modal-body')!.innerHTML = `
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;">
+      <button class="dash-btn" onclick="showAnalyticsModal(-1)">‹</button>
+      <strong>${analyticsYear} 年 ${analyticsMonth + 1} 月</strong>
+      <button class="dash-btn" onclick="showAnalyticsModal(1)">›</button>
+    </div>
+    <div style="display:flex;gap:18px;align-items:center;flex-wrap:wrap;">
+      <canvas id="donutCanvas" width="170" height="170" style="width:170px;height:170px;"></canvas>
+      <div style="flex:1;min-width:180px;display:flex;flex-direction:column;gap:7px;">
+        ${slices.length === 0 ? '<div style="color:var(--text-muted);font-size:13px;">本月还没有投入记录</div>' : slices.map((s) => `
+          <div style="display:flex;align-items:center;gap:8px;font-size:12.5px;">
+            <span style="width:10px;height:10px;border-radius:3px;background:${s.color};display:inline-block;"></span>
+            <span style="flex:1;">${s.icon} ${esc(s.name)}</span>
+            <span style="color:var(--text-muted);">${s.count}笔 · ${Math.round(s.ratio * 100)}%</span>
+            <span style="font-weight:bold;min-width:64px;text-align:right;">${sensitive ? s.amount.toLocaleString() + ' 元' : '—'}</span>
+          </div>`).join('')}
+      </div>
+    </div>
+    <div style="margin:18px 0 8px;font-size:13px;font-weight:bold;">近 6 个月趋势 ${sensitive ? '' : '（金额需授权后显示）'}</div>
+    <div style="display:flex;gap:10px;align-items:flex-end;height:110px;padding:0 4px;border-bottom:1px solid var(--hairline);">
+      ${trend.map((t) => {
+        const isCur = analyticsYear === new Date().getFullYear() && analyticsMonth === new Date().getMonth() && t.label === `${new Date().getMonth() + 1}月`;
+        const h = Math.max(3, Math.round((t.amount / maxTrend) * 90));
+        return `<div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:5px;">
+          <span style="font-size:9.5px;color:var(--text-muted);">${sensitive && t.amount > 0 ? (t.amount >= 10000 ? (t.amount / 10000).toFixed(1) + '万' : t.amount) : (t.count > 0 ? t.count + '笔' : '')}</span>
+          <div style="width:100%;max-width:26px;height:${h}px;border-radius:5px 5px 0 0;background:${isCur ? 'linear-gradient(180deg,#ffb36b,#ff8a4c)' : 'var(--surface-strong)'};"></div>
+          <span style="font-size:10px;color:var(--text-muted);">${t.label}</span>
+        </div>`;
+      }).join('')}
+    </div>
+    <div style="font-size:11.5px;color:var(--text-muted);margin-top:10px;">本月合计 ${totalCount} 笔${sensitive ? ` · ${totalAmount.toLocaleString()} 元` : ''}（按记录日期统计）</div>`;
+  requestAnimationFrame(() => drawDonut(slices, sensitive ? 'amount' : 'count', sensitive ? totalAmount : totalCount));
+}
+
+function drawDonut(slices: ReturnType<typeof categoryBreakdown>, metric: 'amount' | 'count', total: number) {
+  const canvas = document.getElementById('donutCanvas') as HTMLCanvasElement | null;
+  if (!canvas) return;
+  const ctx = canvas.getContext('2d')!;
+  const dpr = 2;
+  canvas.width = 170 * dpr; canvas.height = 170 * dpr;
+  ctx.scale(dpr, dpr);
+  const cx = 85, cy = 85, r = 70, inner = 46;
+  ctx.clearRect(0, 0, 170, 170);
+  if (slices.length === 0 || total <= 0) {
+    ctx.fillStyle = '#f2e9db';
+    ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#a39684'; ctx.font = '12px sans-serif'; ctx.textAlign = 'center';
+    ctx.fillText('暂无数据', cx, cy + 4); ctx.textAlign = 'left';
+    return;
+  }
+  let start = -Math.PI / 2;
+  for (const s of slices) {
+    const v = metric === 'amount' ? s.amount : s.count;
+    const angle = (v / total) * Math.PI * 2;
+    ctx.beginPath(); ctx.moveTo(cx, cy);
+    ctx.arc(cx, cy, r, start, start + angle);
+    ctx.closePath(); ctx.fillStyle = s.color; ctx.fill();
+    start += angle;
+  }
+  ctx.beginPath(); ctx.arc(cx, cy, inner, 0, Math.PI * 2);
+  ctx.fillStyle = '#ffffff'; ctx.fill();
+  ctx.fillStyle = '#3b332b'; ctx.font = 'bold 18px sans-serif'; ctx.textAlign = 'center';
+  ctx.fillText(metric === 'amount' ? `${Math.round(total).toLocaleString()}` : `${total} 笔`, cx, cy + 2);
+  ctx.font = '10px sans-serif'; ctx.fillStyle = '#a39684';
+  ctx.fillText(metric === 'amount' ? '本月投入（元）' : '本月投入', cx, cy + 18);
+  ctx.textAlign = 'left';
+}
+
+// ---------- 习惯打卡 ----------
+const HABIT_ICONS = ['⭐', '📖', '💪', '🏃', '🧘', '🎯', '💧', '🌙', '☀️', '✍️', '🎨', '🎸', '💻', '🌱', '🧠', '🙏'];
+const HABIT_COLORS = CATEGORY_COLORS;
+
+function renderHabitCard(u: UserProfile) {
+  const body = document.getElementById('habitBody');
+  if (!body) return;
+  const habits = (u.habits || []).filter((h) => !h.archived);
+  if (habits.length === 0) {
+    body.innerHTML = `<div style="font-size:12.5px;color:var(--text-secondary);line-height:1.7;margin-bottom:10px;">像 Todo 软件一样，给自己定几个每日小习惯，打卡会自动记入成长轨迹。</div>
+      <button class="btn-primary" style="width:100%;" onclick="showHabitForm()">＋ 新建第一个习惯</button>`;
+    return;
+  }
+  const today = todayKey();
+  body.innerHTML = habits.map((h) => {
+    const st = getHabitStatus(u, h);
+    const dots = st.weekDots.map((hit, i) => {
+      const d = new Date();
+      const dow = (d.getDay() + 6) % 7;
+      const monday = new Date(d.getFullYear(), d.getMonth(), d.getDate() - dow);
+      monday.setDate(monday.getDate() + i);
+      const future = dayKey(monday) > today;
+      return `<span class="week-dot ${hit ? 'hit' : ''} ${future ? 'future' : ''}" style="${hit ? `background:${h.color};border-color:${h.color};` : ''}" title="${dayKey(monday)}"></span>`;
+    }).join('');
+    return `<div class="habit-row">
+      <span class="habit-icon" style="background:${h.color}22;color:${h.color}">${h.icon}</span>
+      <div class="habit-main">
+        <div class="habit-name">${esc(h.name)} <span class="habit-streak">🔥 ${st.streak}</span></div>
+        <div class="habit-sub">
+          <span class="week-dots">${dots}</span>
+          ${h.cadence === 'weekly' ? `<span class="habit-target">${st.weekCount}/${h.timesPerWeek} 次</span>` : `<a onclick="showHabitDetail('${h.id}')">最佳 ${st.bestStreak} 天</a>`}
+        </div>
+      </div>
+      <button class="habit-check ${st.doneToday ? 'done' : ''}" style="${st.doneToday ? `background:${h.color};border-color:${h.color};` : `color:${h.color};border-color:${h.color};`}" onclick="toggleHabit('${h.id}')">${st.doneToday ? '✓' : '打卡'}</button>
+    </div>`;
+  }).join('') + `<div style="display:flex;gap:8px;margin-top:10px;">
+      <button class="dash-btn" style="flex:1;" onclick="showHabitForm()">＋ 新习惯</button>
+      <button class="dash-btn" style="flex:1;" onclick="showHabitManager()">管理</button>
+    </div>`;
+}
+
+(window as any).toggleHabit = toggleHabit;
+function toggleHabit(habitId: string, key: string = todayKey()) {
+  if (!user) return;
+  const u = user;
+  const h = (u.habits || []).find((x) => x.id === habitId);
+  if (!h) return;
+  const prevStreak = getHabitStatus(u, h).streak;
+  const r = toggleCheck(u, habitId, key);
+  let next = r.user;
+  if (r.action === 'checked') {
+    // 今日打卡且习惯开启联动 → 记一笔 0 元投入事件
+    if (key === todayKey() && h.investOnCheck) {
+      const opts = getTypeOptions(u);
+      const opt = h.linkedType ? opts.find((o) => o.key === h.linkedType) : undefined;
+      next.investments.push({
+        date: new Date(), amount: 0,
+        type: opt?.type || 'other', customType: opt?.customId,
+        desc: `「${h.name}」打卡`,
+      });
+    }
+    const st = getHabitStatus(next, h);
+    if (prevStreak < 7 && st.streak >= 7) {
+      next = addSystemEvent(next, { icon: '🔥', title: `「${h.name}」连续打卡 7 天`, date: new Date() });
+    } else if (prevStreak < 30 && st.streak >= 30) {
+      next = addSystemEvent(next, { icon: '🌟', title: `「${h.name}」连续打卡 30 天`, date: new Date() });
+    }
+  }
+  user = next;
+  saveUser(user);
+  const openedModal = document.querySelector('#modalContainer .modal');
+  showDashboard();
+  if (openedModal) showHabitDetail(habitId);
+  showToast(r.action === 'checked'
+    ? `✅ 打卡成功！🔥 连续 ${getHabitStatus(user, h).streak} 天`
+    : '已取消今日打卡');
+}
+
+(window as any).showHabitForm = showHabitForm;
+function showHabitForm(editId?: string) {
+  if (!user) return;
+  const u = user;
+  const h = editId ? (u.habits || []).find((x) => x.id === editId) : null;
+  const typeOpts = getTypeOptions(u).map((o) =>
+    `<option value="${o.key}" ${h?.linkedType === o.key ? 'selected' : ''}>${o.icon} ${o.label}</option>`).join('');
+  const modal = createModal(h ? '✏️ 编辑习惯' : '＋ 新建习惯', '小而稳定的习惯，是最靠谱的成长杠杆');
+  modal.querySelector('.modal-body')!.innerHTML = `
+    <input type="text" id="hName" maxlength="16" placeholder="习惯名称，如：每天阅读 20 分钟" value="${esc(h?.name || '')}" style="width:100%;margin-bottom:12px;">
+    <label class="field-label">图标</label>
+    ${chipPicker('hIcon', HABIT_ICONS, h?.icon || '⭐', 'emoji')}
+    <label class="field-label">颜色</label>
+    ${chipPicker('hColor', HABIT_COLORS, h?.color || '#ff8a4c', 'color')}
+    <label class="field-label">频率</label>
+    <select id="hCadence" style="width:100%;margin:6px 0 10px;" onchange="document.getElementById('hTimesRow').style.display=this.value==='weekly'?'flex':'none';">
+      <option value="daily" ${h?.cadence === 'daily' ? 'selected' : ''}>每天</option>
+      <option value="weekly" ${h?.cadence === 'weekly' ? 'selected' : ''}>每周 N 次</option>
+    </select>
+    <div id="hTimesRow" style="align-items:center;gap:8px;margin-bottom:12px;display:${h?.cadence === 'weekly' ? 'flex' : 'none'};">
+      每周完成 <input type="number" id="hTimes" min="1" max="7" value="${h?.timesPerWeek || 3}" style="width:70px;"> 次
+    </div>
+    <label class="field-label">打卡联动（可选）</label>
+    <select id="hLinked" style="width:100%;margin:6px 0 10px;">
+      <option value="">不关联投入分类（默认）</option>${typeOpts}
+    </select>
+    <label style="display:flex;align-items:center;gap:8px;font-size:13px;margin-bottom:16px;cursor:pointer;">
+      <input type="checkbox" id="hInvest" ${h?.investOnCheck === false ? '' : 'checked'}> 打卡时自动记一笔 0 元投入（让指数看到你的坚持）
+    </label>
+    <div class="form-actions">
+      ${h ? '<button class="dash-btn danger" onclick="habitDelete(\'' + h.id + '\')">删除习惯</button>' : ''}
+      <button class="btn-primary" onclick="habitSave('${h?.id || ''}')">${h ? '保存' : '创建习惯'}</button>
+    </div>`;
+}
+
+(window as any).habitSave = function (editId: string) {
+  if (!user) return;
+  const u = user;
+  const name = (document.getElementById('hName') as HTMLInputElement).value.trim();
+  if (!name) { showToast('请填写习惯名称'); return; }
+  const data = {
+    name,
+    icon: document.getElementById('hIcon')!.dataset.value || '⭐',
+    color: document.getElementById('hColor')!.dataset.value || '#ff8a4c',
+    cadence: (document.getElementById('hCadence') as HTMLSelectElement).value as 'daily' | 'weekly',
+    timesPerWeek: Math.min(7, Math.max(1, Number((document.getElementById('hTimes') as HTMLInputElement).value) || 3)),
+    linkedType: (document.getElementById('hLinked') as HTMLSelectElement).value || undefined,
+    investOnCheck: (document.getElementById('hInvest') as HTMLInputElement).checked,
+  };
+  if (editId) {
+    const old = (u.habits || []).find((x) => x.id === editId);
+    if (old) Object.assign(old, data);
+  } else {
+    const habit = createHabit(data);
+    u.habits = [...(u.habits || []), habit];
+  }
+  saveUser(u); closeModal(); showHabitManager(); showDashboard(); showToast('✅ 习惯已保存');
+};
+
+(window as any).showHabitManager = showHabitManager;
+function showHabitManager() {
+  if (!user) return;
+  const u = user;
+  const modal = createModal('🗂️ 习惯管理', '归档后习惯不再出现在今日列表，记录保留');
+  const list = (u.habits || []).map((h) => {
+    const st = getHabitStatus(u, h);
+    return `<div class="ct-row ${h.archived ? 'archived' : ''}">
+      <span class="ct-icon" style="background:${h.color}22;color:${h.color}">${h.icon}</span>
+      <span class="ct-name">${esc(h.name)} <small>${h.cadence === 'daily' ? '每天' : `每周${h.timesPerWeek}次`} · 🔥${st.streak} · 最佳${st.bestStreak}</small></span>
+      <span class="ct-ops">
+        <a onclick="showHabitDetail('${h.id}')">热力图</a>
+        <a onclick="showHabitForm('${h.id}')">编辑</a>
+        ${h.archived ? `<a onclick="habitRestore('${h.id}')">恢复</a>` : `<a onclick="habitArchive('${h.id}')">归档</a>`}
+      </span>
+    </div>`;
+  }).join('') || '<div style="color:var(--text-muted);font-size:13px;text-align:center;padding:8px;">还没有习惯</div>';
+  modal.querySelector('.modal-body')!.innerHTML = `
+    <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:16px;">${list}</div>
+    <button class="btn-primary" style="width:100%;" onclick="showHabitForm()">＋ 新建习惯</button>`;
+}
+(window as any).habitArchive = function (id: string) {
+  if (!user) return;
+  const h = user.habits!.find((x) => x.id === id);
+  if (h) h.archived = true;
+  saveUser(user); showHabitManager(); showDashboard();
+};
+(window as any).habitRestore = function (id: string) {
+  if (!user) return;
+  const h = user.habits!.find((x) => x.id === id);
+  if (h) h.archived = false;
+  saveUser(user); showHabitManager(); showDashboard();
+};
+(window as any).habitDelete = function (id: string) {
+  if (!user) return;
+  if (!confirm('删除习惯会同时删除它的全部打卡记录，确定吗？')) return;
+  user.habits = (user.habits || []).filter((h) => h.id !== id);
+  user.habitChecks = (user.habitChecks || []).filter((c) => c.habitId !== id);
+  saveUser(user); closeModal(); showHabitManager(); showDashboard();
+};
+
+(window as any).showHabitDetail = showHabitDetail;
+function showHabitDetail(id: string) {
+  if (!user) return;
+  const u = user;
+  const h = (u.habits || []).find((x) => x.id === id);
+  if (!h) return;
+  const st = getHabitStatus(u, h);
+  const heat = getHeatmap(u, h, 12);
+  const weekdayLabels = ['一', '二', '三', '四', '五', '六', '日'];
+  // 转成行优先：7 行 x 12 列
+  const cells: string[] = [];
+  for (let row = 0; row < 7; row++) {
+    for (let col = 0; col < 12; col++) {
+      const d = heat[col][row];
+      const cls = d.checked ? 'checked' : d.future ? 'future' : 'empty';
+      const style = d.checked ? `background:${h.color};` : '';
+      const click = d.future ? '' : `onclick="toggleHabit('${h.id}','${d.date}')"`;
+      cells.push(`<span class="heat-cell ${cls}" title="${d.date}${d.makeup ? '（补卡）' : ''}" ${click} style="${style}">${d.makeup ? '·' : ''}</span>`);
+    }
+  }
+  const modal = createModal(`${h.icon} ${esc(h.name)} · 打卡详情`, '点击空格可以补卡，补卡会正常计入连续天数');
+  modal.querySelector('.modal-body')!.innerHTML = `
+    <div style="display:flex;gap:14px;margin-bottom:16px;flex-wrap:wrap;">
+      <div class="habit-stat"><span>🔥</span><div><strong>${st.streak}</strong><small>当前连续</small></div></div>
+      <div class="habit-stat"><span>🏅</span><div><strong>${st.bestStreak}</strong><small>最佳连续（天）</small></div></div>
+      <div class="habit-stat"><span>📅</span><div><strong>${st.weekCount}${h.cadence === 'weekly' ? '/' + h.timesPerWeek : ''}</strong><small>本周次数</small></div></div>
+    </div>
+    <div style="display:flex;gap:6px;align:flex-start;">
+      <div style="display:flex;flex-direction:column;gap:3px;padding-top:2px;">
+        ${weekdayLabels.map((w) => `<span style="height:22px;font-size:10px;line-height:18px;color:var(--text-muted);">${w}</span>`).join('')}
+      </div>
+      <div class="heatmap">${cells.join('')}</div>
+    </div>
+    <div style="font-size:11px;color:var(--text-muted);margin-top:10px;">近 12 周 · 颜色越深代表已打卡 · 「·」为补卡</div>
+    <div class="form-actions" style="margin-top:14px;">
+      <button class="dash-btn" onclick="showHabitForm('${h.id}')">编辑习惯</button>
+      <button class="btn-primary" onclick="closeModal()">完成</button>
+    </div>`;
+}
+
+// ---------- 成长待办 ----------
+function renderTodoCard(u: UserProfile) {
+  const body = document.getElementById('todoBody');
+  if (!body) return;
+  const todos = sortTodos(u.todos || []).slice(0, 20);
+  const today = todayKey();
+  const priMeta: Record<number, { label: string; color: string }> = {
+    1: { label: '高优先', color: '#e05c4b' },
+    2: { label: '中', color: '#f5a623' },
+    3: { label: '低', color: '#a39684' },
+  };
+  body.innerHTML = (todos.length === 0 ? '<div style="color:var(--text-muted);font-size:13px;margin-bottom:10px;">还没有待办，写下一件想推进的小事吧</div>' : '') +
+    todos.map((t) => {
+      const overdue = isOverdue(t, today);
+      const p = priMeta[t.priority];
+      return `<div class="todo-row ${t.done ? 'done' : ''}" style="border-left-color:${p.color}">
+        <span class="todo-check" onclick="todoToggle('${t.id}')">${t.done ? '✓' : ''}</span>
+        <div class="todo-main" onclick="todoToggle('${t.id}')">
+          <div class="todo-title">${esc(t.title)}</div>
+          <div class="todo-meta">
+            <span class="todo-pri" style="color:${p.color}">${p.label}</span>
+            ${t.dueDate ? `<span class="todo-due ${overdue ? 'overdue' : ''}">${overdue ? '已逾期 · ' : ''}${t.dueDate.slice(5)} 截止</span>` : ''}
+            ${t.done ? `<a onclick="event.stopPropagation();todoConvertInvest('${t.id}')">→ 记投入</a> <a onclick="event.stopPropagation();todoConvertJournal('${t.id}')">→ 写感悟</a>` : ''}
+          </div>
+        </div>
+        <span class="i-edit" onclick="editTodo('${t.id}')">✏️</span>
+      </div>`;
+    }).join('');
+}
+
+(window as any).todoAdd = function () {
+  if (!user) return;
+  const title = (document.getElementById('todoInput') as HTMLInputElement).value.trim();
+  if (!title) { showToast('先写点什么吧'); return; }
+  const priority = Number((document.getElementById('todoPriority') as HTMLSelectElement).value) as 1 | 2 | 3;
+  const dueDate = (document.getElementById('todoDue') as HTMLInputElement).value || undefined;
+  user.todos = [...(user.todos || []), createTodo({ title, priority, dueDate })];
+  saveUser(user);
+  (document.getElementById('todoInput') as HTMLInputElement).value = '';
+  (document.getElementById('todoDue') as HTMLInputElement).value = '';
+  showDashboard();
+  showToast('✅ 已添加');
+};
+(window as any).todoToggle = function (id: string) {
+  if (!user) return;
+  const t = (user.todos || []).find((x) => x.id === id);
+  if (!t) return;
+  const wasDone = t.done;
+  Object.assign(t, toggleDone(t));
+  saveUser(user);
+  showDashboard();
+  if (!wasDone) showToast('🎉 完成一件！可以把它转成投入或感悟');
+};
+(window as any).editTodo = function (id: string) {
+  if (!user) return;
+  const t = (user.todos || []).find((x) => x.id === id);
+  if (!t) return;
+  const modal = createModal('✏️ 编辑待办', '');
+  modal.querySelector('.modal-body')!.innerHTML = `
+    <input type="text" id="tTitle" value="${esc(t.title)}" maxlength="60" style="width:100%;margin-bottom:12px;">
+    <textarea id="tNote" rows="2" placeholder="备注（可选）" style="width:100%;margin-bottom:12px;">${esc(t.note || '')}</textarea>
+    <div style="display:flex;gap:10px;margin-bottom:12px;">
+      <select id="tPriority" style="flex:1;">
+        <option value="1" ${t.priority === 1 ? 'selected' : ''}>高优先</option>
+        <option value="2" ${t.priority === 2 ? 'selected' : ''}>中优先</option>
+        <option value="3" ${t.priority === 3 ? 'selected' : ''}>低优先</option>
+      </select>
+      <input type="date" id="tDue" value="${t.dueDate || ''}" style="flex:1;">
+    </div>
+    <div class="form-actions" style="justify-content:space-between;">
+      <button class="dash-btn danger" onclick="todoDelete('${t.id}')">删除</button>
+      <button class="btn-primary" onclick="todoSave('${t.id}')">保存</button>
+    </div>`;
+};
+(window as any).todoSave = function (id: string) {
+  if (!user) return;
+  const t = (user.todos || []).find((x) => x.id === id);
+  if (!t) return;
+  const title = (document.getElementById('tTitle') as HTMLInputElement).value.trim();
+  if (!title) { showToast('标题不能为空'); return; }
+  t.title = title;
+  t.note = (document.getElementById('tNote') as HTMLTextAreaElement).value.trim() || undefined;
+  t.priority = Number((document.getElementById('tPriority') as HTMLSelectElement).value) as 1 | 2 | 3;
+  t.dueDate = (document.getElementById('tDue') as HTMLInputElement).value || undefined;
+  saveUser(user); closeModal(); showDashboard(); showToast('✅ 已保存');
+};
+(window as any).todoDelete = function (id: string) {
+  if (!user) return;
+  if (!confirm('删除这条待办？')) return;
+  user.todos = (user.todos || []).filter((x) => x.id !== id);
+  saveUser(user); closeModal(); showDashboard();
+};
+(window as any).todoConvertInvest = function (id: string) {
+  if (!user) return;
+  const t = (user.todos || []).find((x) => x.id === id);
+  if (!t) return;
+  const el = document.getElementById('investDesc') as HTMLInputElement;
+  el.value = `完成：${t.title}`;
+  closeModal();
+  document.getElementById('investAmount')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  document.getElementById('investAmount')?.focus({ preventScroll: true });
+  showToast('已填入投入描述，补个金额或直接添加');
+};
+(window as any).todoConvertJournal = function (id: string) {
+  if (!user) return;
+  const t = (user.todos || []).find((x) => x.id === id);
+  if (!t) return;
+  const el = document.getElementById('journalInput') as HTMLInputElement;
+  el.value = `今天完成了「${t.title}」`;
+  closeModal();
+  el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  el.focus();
+};
+
+// ---------- 成长大事记 ----------
+const EVENT_ICONS = ['🌟', '🎉', '🎓', '💼', '💍', '🏠', '🏆', '🚀', '🌈', '🧭'];
+(window as any).showTimelineModal = showTimelineModal;
+function showTimelineModal() {
+  if (!user) return;
+  const u = user;
+  const tl = buildTimeline(u);
+  const modal = createModal('📅 成长大事记', '你的每一笔投入、感悟与重要时刻，都会沉淀在这里');
+  modal.querySelector('.modal-body')!.innerHTML = `
+    <div class="sub-form" style="margin-bottom:18px;">
+      <div style="font-weight:bold;margin-bottom:8px;">记录一个大事件</div>
+      ${chipPicker('eIcon', EVENT_ICONS, '🌟', 'emoji')}
+      <input type="text" id="eTitle" placeholder="事件标题，如：拿到心仪 offer" style="width:100%;margin:10px 0;">
+      <div style="display:flex;gap:10px;">
+        <input type="date" id="eDate" value="${todayKey()}" max="${todayKey()}" style="flex:1;">
+        <button class="btn-primary" onclick="timelineAdd()">添加</button>
+      </div>
+      <input type="text" id="eDesc" placeholder="备注（可选）" style="width:100%;margin-top:10px;">
+    </div>
+    ${tl.achievedMilestones.length ? `<div style="margin-bottom:16px;"><div style="font-size:12px;color:var(--text-muted);margin-bottom:8px;">🏅 已达成的里程碑</div>
+      <div style="display:flex;flex-wrap:wrap;gap:6px;">${tl.achievedMilestones.map((m) => `<span class="milestone-chip">${m.icon} ${esc(m.name)}</span>`).join('')}</div></div>` : ''}
+    <div class="timeline">
+      ${tl.months.length === 0 ? '<div style="color:var(--text-muted);font-size:13px;text-align:center;padding:16px;">还没有大事记，去记一笔投入或写句话吧</div>' : ''}
+      ${tl.months.map((m) => `
+        <div class="tl-month">
+          <div class="tl-month-label">${m.label}</div>
+          <div class="tl-items">
+            ${m.items.map((it) => `<div class="tl-item">
+              <span class="tl-dot">${it.icon}</span>
+              <div class="tl-content">
+                <div class="tl-title">${esc(it.title)}</div>
+                <div class="tl-desc">${it.date.toLocaleDateString('zh-CN')}${it.desc ? ' · ' + esc(it.desc) : ''}</div>
+              </div>
+              ${it.deletable ? `<span class="i-edit" onclick="timelineDelete('${it.id}')">🗑</span>` : ''}
+            </div>`).join('')}
+          </div>
+        </div>`).join('')}
+    </div>`;
+}
+(window as any).timelineAdd = function () {
+  if (!user) return;
+  const title = (document.getElementById('eTitle') as HTMLInputElement).value.trim();
+  if (!title) { showToast('写个标题吧'); return; }
+  const icon = document.getElementById('eIcon')!.dataset.value || '🌟';
+  const dateVal = (document.getElementById('eDate') as HTMLInputElement).value;
+  const desc = (document.getElementById('eDesc') as HTMLInputElement).value.trim() || undefined;
+  user = addManualEvent(user, { title, icon, desc, date: dateVal ? parseKey(dateVal) : new Date() });
+  saveUser(user);
+  showTimelineModal();
+  showToast('✅ 已加入大事记');
+};
+(window as any).timelineDelete = function (id: string) {
+  if (!user) return;
+  user = deleteEvent(user, id);
+  saveUser(user);
+  showTimelineModal();
+};
+
+// ---------- 指数预警线 ----------
+(window as any).showAlertModal = showAlertModal;
+function showAlertModal() {
+  if (!user) return;
+  const u = user;
+  const price = Math.round(calculateStock(u).price);
+  const a = u.priceAlert || {};
+  const modal = createModal('⚑ 指数预警线', '本地计算：成长指数触及目标位或回落至支撑位时，给你一个提示');
+  modal.querySelector('.modal-body')!.innerHTML = `
+    <div style="padding:10px 14px;background:var(--surface-softer);border-radius:10px;font-size:13px;margin-bottom:14px;">当前指数：<strong>${price} 点</strong></div>
+    <label class="field-label">🎯 目标位（点）</label>
+    <input type="number" id="alertTarget" value="${a.target ?? ''}" placeholder="如 ${price + 30}，留空不设" style="width:100%;margin:6px 0 14px;">
+    <label class="field-label">🟡 支撑位（点）</label>
+    <input type="number" id="alertFloor" value="${a.floor ?? ''}" placeholder="如 ${Math.max(50, price - 20)}，留空不设" style="width:100%;margin:6px 0 14px;">
+    <div class="form-actions" style="justify-content:space-between;">
+      <button class="dash-btn" onclick="alertClear()">清除预警</button>
+      <button class="btn-primary" onclick="alertSave()">保存</button>
+    </div>`;
+}
+(window as any).alertSave = function () {
+  if (!user) return;
+  const t = Number((document.getElementById('alertTarget') as HTMLInputElement).value);
+  const f = Number((document.getElementById('alertFloor') as HTMLInputElement).value);
+  const prev = user.priceAlert || {};
+  user.priceAlert = {
+    target: t > 0 ? t : undefined,
+    floor: f > 0 ? f : undefined,
+    // 修改了线位则重新判定
+    targetHit: t > 0 && t === prev.target ? !!prev.targetHit : false,
+    floorHit: f > 0 && f === prev.floor ? !!prev.floorHit : false,
+  };
+  saveUser(user); closeModal(); showDashboard(); showToast('✅ 预警线已保存');
+};
+(window as any).alertClear = function () {
+  if (!user) return;
+  user.priceAlert = undefined;
+  saveUser(user); closeModal(); showDashboard();
+};
+function renderAlertBadge(u: UserProfile) {
+  const el = document.getElementById('alertBadge');
+  if (!el) return;
+  const a = u.priceAlert;
+  if (!a) { el.innerHTML = ''; return; }
+  const parts: string[] = [];
+  if (a.targetHit) parts.push(`<span class="alert-chip hit">🎉 已突破 ${a.target} 点</span>`);
+  if (a.floorHit) parts.push(`<span class="alert-chip warn">🟡 在支撑位 ${a.floor} 附近</span>`);
+  el.innerHTML = parts.join(' ');
+}
+
+// ---------- 今日行情条 ----------
+function renderTodayStrip(u: UserProfile, stock: StockSnapshotLike) {
+  const el = document.getElementById('todayStrip');
+  if (!el) return;
+  const now = new Date();
+  const h = now.getHours();
+  const greet = h < 6 ? '夜深了' : h < 11 ? '早上好' : h < 14 ? '中午好' : h < 18 ? '下午好' : '晚上好';
+  const week = '周' + ['日', '一', '二', '三', '四', '五', '六'][now.getDay()];
+  const habits = (u.habits || []).filter((x) => !x.archived);
+  const doneHabits = habits.filter((x) => getHabitStatus(u, x).doneToday).length;
+  const today = todayKey();
+  const journalToday = (u.journals || []).some((j) => dayKey(new Date(j.date)) === today);
+  const maxStreak = habits.reduce((m, x) => Math.max(m, getHabitStatus(u, x).streak), 0);
+  let cta: string;
+  if (habits.length > 0 && doneHabits < habits.length) {
+    cta = `<button class="strip-cta" onclick="document.getElementById('habitCard').scrollIntoView({behavior:'smooth',block:'center'})">去打卡 →</button>`;
+  } else if (!journalToday) {
+    cta = `<button class="strip-cta" onclick="document.getElementById('journalInput').scrollIntoView({behavior:'smooth',block:'center'});document.getElementById('journalInput').focus();">写一句 →</button>`;
+  } else {
+    cta = `<span class="strip-done">✨ 今天也在长进</span>`;
+  }
+  el.innerHTML = `
+    <div class="strip-left">
+      <span class="strip-avatar">${u.avatar || '🌱'}</span>
+      <div>
+        <div class="strip-greet">${greet}，${esc(u.nickname || '朋友')}</div>
+        <div class="strip-sub">${now.getMonth() + 1}月${now.getDate()}日 ${week}${u.indexName ? ` · ${esc(u.indexName)}` : ''}${u.signature ? ` · ${esc(u.signature)}` : ''}</div>
+      </div>
+    </div>
+    <div class="strip-right">
+      <span class="strip-chip ${habits.length > 0 && doneHabits === habits.length ? 'ok' : ''}">✅ 习惯 ${doneHabits}/${habits.length}</span>
+      <span class="strip-chip ${journalToday ? 'ok' : ''}">${journalToday ? '📝 已记录' : '📝 未记录'}</span>
+      ${maxStreak > 0 ? `<span class="strip-chip fire">🔥 ${maxStreak} 天</span>` : ''}
+      <span class="strip-price" style="color:${stock.change >= 0 ? 'var(--accent-green)' : 'var(--accent-red)'}">${Math.round(stock.price)} 点 · ${stock.change >= 0 ? '+' : ''}${stock.change}%</span>
+      ${cta}
+    </div>`;
+}
+type StockSnapshotLike = { price: number; change: number };
 
 init();

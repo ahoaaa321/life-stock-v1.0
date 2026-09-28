@@ -9,6 +9,31 @@ const SENSITIVE_KEY = 'sensitiveConsent'; // 敏感信息（收入、负债、�
 
 // ============ 用户数据存储 ============
 
+/** JSON 反序列化后把各日期字段复活为 Date（v1.3 起含习惯/待办/事件） */
+function reviveDates(user: UserProfile): UserProfile {
+  user.investments = (user.investments || []).map((i) => ({ ...i, date: new Date(i.date as unknown as string) }));
+  if (user.setbacks) {
+    user.setbacks = user.setbacks.map((s) => ({ ...s, date: new Date(s.date as unknown as string) }));
+  }
+  if (user.journals) {
+    user.journals = user.journals.map((j) => ({ ...j, date: new Date(j.date as unknown as string) }));
+  }
+  if (user.habits) {
+    user.habits = user.habits.map((h) => ({ ...h, createdAt: new Date(h.createdAt as unknown as string) }));
+  }
+  if (user.todos) {
+    user.todos = user.todos.map((t) => ({
+      ...t,
+      createdAt: new Date(t.createdAt as unknown as string),
+      doneAt: t.doneAt ? new Date(t.doneAt as unknown as string) : undefined,
+    }));
+  }
+  if (user.lifeEvents) {
+    user.lifeEvents = user.lifeEvents.map((e) => ({ ...e, date: new Date(e.date as unknown as string) }));
+  }
+  return user;
+}
+
 export function saveUser(user: UserProfile): void {
   storage.set(STORAGE_KEY, JSON.stringify(user));
 }
@@ -19,12 +44,7 @@ export function loadUser(): UserProfile | null {
   try {
     const raw = JSON.parse(saved) as UserProfile & { version?: string };
     // 版本迁移
-    const user = migrate(raw, raw.version);
-    user.investments = (user.investments || []).map((i) => ({ ...i, date: new Date(i.date as unknown as string) }));
-    if (user.setbacks) {
-      user.setbacks = user.setbacks.map((s) => ({ ...s, date: new Date(s.date as unknown as string) }));
-    }
-    return user;
+    return reviveDates(migrate(raw, raw.version));
   } catch {
     return null;
   }
@@ -89,10 +109,5 @@ export function exportUser(user: UserProfile): void {
 export function importUser(json: string): UserProfile {
   const data = JSON.parse(json) as UserProfile & { version?: string };
   if (!data.age || !data.history) throw new Error('文件格式不正确');
-  const user = migrate(data, data.version);
-  user.investments = (user.investments || []).map((i) => ({ ...i, date: new Date(i.date as unknown as string) }));
-  if (user.setbacks) {
-    user.setbacks = user.setbacks.map((s) => ({ ...s, date: new Date(s.date as unknown as string) }));
-  }
-  return user;
+  return reviveDates(migrate(data, data.version));
 }
