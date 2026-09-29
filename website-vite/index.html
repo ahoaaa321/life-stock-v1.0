@@ -424,6 +424,9 @@
                 <div id="todayStrip"></div>
             </div>
 
+            <!-- v1.5 低谷恢复计划横幅（有未完成计划时显示） -->
+            <div id="recoveryBannerWrap" style="grid-column: span 2;display:none;"></div>
+
             <div class="dash-card" style="grid-column: span 2;">
                 <div class="dash-card-title">
                     🌱 成长曲线 <span id="klineAge" style="font-size:13px;color:var(--text-secondary);font-weight:normal;"></span>
@@ -474,6 +477,16 @@
             <!-- 记一笔投入 -->
             <div class="dash-card">
                 <div class="dash-card-title">💡 记一笔投入</div>
+                <!-- v1.5 一句话智能记一笔（调研：55.3% 刚需 / 50% 痛点） -->
+                <div style="display:flex;gap:8px;margin-bottom:6px;">
+                    <input type="text" id="smartInvestInput" placeholder="✨ 一句话记一笔，如：昨天买了本编程书 80 元"
+                           style="flex:1;padding:10px 14px;font-size:13.5px;border-radius:12px;"
+                           oninput="previewSmartInvest()"
+                           onkeydown="if(event.key==='Enter')smartInvest()">
+                    <button class="btn-primary" style="width:72px;flex-shrink:0;padding:0;" onclick="smartInvest()">记入</button>
+                </div>
+                <div id="smartPreview" style="font-size:11.5px;color:var(--text-muted);margin-bottom:10px;line-height:1.6;"></div>
+                <div style="height:1px;background:var(--border);margin:4px 0 12px;"></div>
                 <input type="date" id="investDate" style="width:100%;padding:8px 12px;margin-bottom:10px;">
                 <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:12px;" id="investTypes"></div>
                 <input type="number" id="investAmount" placeholder="这笔花了多少（元，仅存本机）" style="width:100%;padding:10px 14px;margin-bottom:10px;">

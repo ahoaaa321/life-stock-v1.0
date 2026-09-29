@@ -30,7 +30,11 @@ import {
   buildTimeline, addManualEvent, addSystemEvent, deleteEvent,
   evaluateAlert,
   applyEnhancedSurvey, defaultEduStages, getSurveyCoverage,
+  createRecoveryPlan, toggleInstant, toggleRecoveryTask, getRecoveryProgress,
+  getActiveRecoveryPlan, upsertRecoveryPlan, getRecoveryKit,
+  smartParseInvest,
 } from '@life-stock/core';
+import type { RecoveryPlan, SetbackKind } from '@life-stock/core';
 import {
   saveUser, loadUser, clearUser, isDisclaimerConfirmed, confirmDisclaimer,
   exportUser, importUser, isPrivacyConsented, setPrivacyConsent,
@@ -295,6 +299,7 @@ function showDashboard() {
   renderHabitCard(u);
   renderTodoCard(u);
   renderBudgetCard(u);
+  renderRecoveryBanner(u);
 }
 
 // ============ 记一笔投入 ============
@@ -346,22 +351,87 @@ function addInvestment() {
   if (sensitive && amountEl.value && (!amount || amount < 0)) { showToast('请输入有效金额，或留空仅记录事件'); return; }
   const opt = currentSelection(u);
   const date = dateEl && dateEl.value ? parseKey(dateEl.value) : new Date();
-  u.investments.push({
-    type: opt.type,
-    customType: opt.customId,
-    amount,
-    desc: descEl.value.trim() || undefined,
-    date,
-  });
-  u.totalInvest += amount;
+  commitInvestment({ type: opt.type, customId: opt.customId, amount, desc: descEl.value.trim() || undefined, date });
   amountEl.value = '';
   descEl.value = '';
   if (dateEl) dateEl.value = todayKey();
+}
+
+/** 投入提交的统一入口（表单与一句话智能记一笔共用），含指数即时回响 */
+const INVEST_CHEERS: Record<string, string> = {
+  education: '今天学到的，都会在未来替你说话 📚',
+  skill: '又给未来的自己存了一项本事 ✨',
+  health: '好好照顾自己，是最稳的成长投资 💪',
+  network: '关系里的温度，也是成长的养分 🤝',
+  entertainment: '会休息的人，才走得远 🎮',
+  other: '这一笔小努力，被认真记下了 🌱',
+};
+function commitInvestment(item: { type: InvestType; customId?: string; amount: number; desc?: string; date: Date }) {
+  if (!user) return;
+  const u = user;
+  const before = calculateStock(u).price;
+  u.investments.push({ type: item.type, customType: item.customId, amount: item.amount, desc: item.desc, date: item.date });
+  u.totalInvest += item.amount;
   saveUser(u);
+  const after = calculateStock(u).price;
   showDashboard();
-  showToast(sensitive && amount > 0
-    ? `✅ 已记录这笔投入 ${amount.toLocaleString()} 元，成长指数已更新`
-    : '✅ 已记录这笔投入，成长指数已更新');
+  // P0-3 即时回响：1 秒内看到指数变化（调研：缺系统反馈 57.1% / 量化卖点 51.1%）
+  const delta = after - before;
+  const cheer = INVEST_CHEERS[item.customId ? (u.customTypes || []).find((c) => c.id === item.customId)?.baseType || 'other' : item.type] || INVEST_CHEERS.other;
+  if (delta !== 0) {
+    showToast(`🌱 成长指数 ${before.toFixed(0)} → ${after.toFixed(0)}（${delta > 0 ? '+' : ''}${delta.toFixed(0)}）${cheer}`);
+  } else {
+    showToast(`✅ 已记下这笔投入 · ${cheer}`);
+  }
+}
+
+// ============ 一句话智能记一笔（P0-2） ============
+const SMART_TYPE_LABEL: Record<string, string> = {
+  education: '🎓 教育', skill: '📚 技能', health: '💪 健康',
+  network: '🤝 人脉', entertainment: '🎮 娱乐', other: '📦 其他',
+};
+(window as any).smartInvest = smartInvest;
+(window as any).previewSmartInvest = previewSmartInvest;
+
+function previewSmartInvest() {
+  if (!user) return;
+  const input = document.getElementById('smartInvestInput') as HTMLInputElement;
+  const box = document.getElementById('smartPreview');
+  if (!box) return;
+  const text = input.value.trim();
+  if (!text) { box.innerHTML = ''; return; }
+  const r = smartParseInvest(text);
+  const sensitive = isSensitiveConsented();
+  const typeLabel = r.type ? SMART_TYPE_LABEL[r.type] : '🏷️ 用当前分类';
+  const amountLabel = !r.matched.amount ? '只记事件'
+    : sensitive ? `${r.amount!.toLocaleString()} 元` : '金额已忽略（未授权）';
+  const dateLabel = r.date ? `${r.date.getMonth() + 1}月${r.date.getDate()}日` : '今天';
+  box.innerHTML = `识别为：<b style="color:var(--text-primary);">${typeLabel} · ${amountLabel} · ${dateLabel}</b>，按「记入」保存，不对可在下方表单修改`;
+}
+
+function smartInvest() {
+  if (!user) return;
+  const u = user;
+  const input = document.getElementById('smartInvestInput') as HTMLInputElement;
+  const text = input.value.trim();
+  if (!text) { showToast('先写一句话，比如：昨天健身课花了 200'); return; }
+  const r = smartParseInvest(text);
+  const sensitive = isSensitiveConsented();
+  // 分类：解析到就用解析的（同步表单选中态），否则用当前选中分类
+  let type: InvestType = r.type || selectedInvestType;
+  let customId: string | undefined;
+  if (r.type) {
+    selectedInvestType = r.type;
+    selectedCustomId = null;
+    renderInvestTypeChips(u);
+  } else {
+    const opt = currentSelection(u);
+    type = opt.type; customId = opt.customId;
+  }
+  const amount = sensitive ? (r.amount ?? 0) : 0;
+  commitInvestment({ type, customId, amount, desc: r.desc || undefined, date: r.date || new Date() });
+  input.value = '';
+  document.getElementById('smartPreview')!.innerHTML = '';
 }
 
 (window as any).editInvest = editInvest;
@@ -832,29 +902,35 @@ function showShareModal() {
 }
 
 function showSetbackModal() {
-  const modal = createModal('💥 记录挫折', '成长有快有慢，记下这段经历，回头看会更清楚');
+  const modal = createModal('💥 记录一段波折', '成长有快有慢。记下它，我们会陪你制定一份恢复期行动清单');
   modal.querySelector('.modal-body')!.innerHTML = `
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px;">
       ${[
-        { t: 'jobloss', i: '💼', n: '失业/降薪', d: '收入下降' },
-        { t: 'illness', i: '🏥', n: '重大疾病', d: '健康衰退' },
-        { t: 'loss', i: '📉', n: '投入回落', d: '积累暂时放缓' },
-        { t: 'stagnate', i: '😴', n: '躺平/断更', d: '停止成长' },
+        { t: 'jobloss', i: '💼', n: '工作变动', d: '降薪/失业' },
+        { t: 'illness', i: '🏥', n: '健康风波', d: '身体亮红灯' },
+        { t: 'loss', i: '🌧️', n: '失去与回落', d: '积累暂时放缓' },
+        { t: 'stagnate', i: '🪫', n: '躺平/断更', d: '暂时停了下来' },
       ].map(s => `<div class="setback-type" data-type="${s.t}" onclick="selectSetback('${s.t}')" style="padding:12px;background:var(--surface-softer);border-radius:10px;cursor:pointer;text-align:center;"><div style="font-size:24px">${s.i}</div><div style="font-weight:bold;margin-top:4px">${s.n}</div><div style="font-size:11px;color:var(--text-muted)">${s.d}</div></div>`).join('')}
     </div>
-    <input type="range" id="setbackSeverity" min="1" max="10" value="5" style="width:100%;">
-    <div style="text-align:center;color:var(--text-secondary);margin:8px 0;">严重度：<span id="severityVal">5</span></div>
-    <div class="form-actions"><button class="btn-primary" style="background:linear-gradient(135deg,#e05c4b,#c94736);" onclick="applySetback()">确认记录</button></div>
+    <input type="range" id="setbackSeverity" min="1" max="10" value="5" style="width:100%;accent-color:#C9936A;">
+    <div style="text-align:center;color:var(--text-secondary);margin:8px 0;">影响程度：<span id="severityVal">5</span> / 10</div>
+    <div style="font-size:12px;color:var(--text-muted);background:var(--surface-softer);border-radius:10px;padding:10px;margin-bottom:14px;line-height:1.7;">记录后不会只看到数字回落——你会立即得到 <b>1 个 60 秒能做的小行动</b> 和一份 <b>7 天恢复期清单</b>，勾选完成即可看到回暖。</div>
+    <div class="form-actions"><button class="btn-primary" style="background:linear-gradient(135deg,#C9936A,#A8734D);" onclick="applySetback()">记录并生成恢复计划</button></div>
   `;
   (document.getElementById('setbackSeverity') as HTMLInputElement).oninput = (e) => {
     document.getElementById('severityVal')!.textContent = (e.target as HTMLInputElement).value;
   };
 }
 let selectedSetback = '';
-(window as any).selectSetback = (t: string) => { selectedSetback = t; };
+(window as any).selectSetback = (t: string) => {
+  selectedSetback = t;
+  document.querySelectorAll('.setback-type').forEach((el) => {
+    (el as HTMLElement).style.outline = (el as HTMLElement).dataset.type === t ? '2px solid #C9936A' : 'none';
+  });
+};
 (window as any).applySetback = applySetback;
 function applySetback() {
-  if (!user || !selectedSetback) return;
+  if (!user || !selectedSetback) { showToast('先选一个最接近的类型吧'); return; }
   const factor = Number((document.getElementById('setbackSeverity') as HTMLInputElement).value) / 10;
   const before = calculateStock(user).price;
   if (selectedSetback === 'jobloss') {
@@ -870,11 +946,116 @@ function applySetback() {
   } else if (selectedSetback === 'stagnate') {
     user.studyHours = Math.max(0, user.studyHours - 2 * factor);
   }
+  // 生成恢复计划（P0-1：调研 Q5 挫折修复 74.5% 第一刚需）
+  const plan = createRecoveryPlan(selectedSetback as SetbackKind, Math.round(factor * 10), before);
+  user = upsertRecoveryPlan(user, plan);
   saveUser(user);
-  const after = calculateStock(user).price;
-  closeModal();
-  showToast(`指数 ${before.toFixed(1)} → ${after.toFixed(1)}`);
+  showRecoveryPlanModal(plan.id, before);
   showDashboard();
+}
+
+// ============ 恢复计划弹窗 ============
+const SETBACK_TITLES: Record<SetbackKind, string> = {
+  jobloss: '💼 工作变动恢复期', illness: '🏥 健康恢复期',
+  loss: '🌧️ 回落调整期', stagnate: '🪫 重新启动期',
+};
+(window as any).showRecoveryPlanModal = (id?: string) => { if (user) showRecoveryPlanModal(id); };
+(window as any).toggleRecoveryInstant = (id: string) => { if (user) toggleRecoveryInstant(id); };
+(window as any).toggleRecoveryTaskItem = (planId: string, taskId: string) => {
+  if (user) toggleRecoveryTaskItem(planId, taskId);
+};
+
+function showRecoveryPlanModal(planId?: string, beforePrice?: number) {
+  if (!user) return;
+  const u = user;
+  const plan = (u.recoveryPlans || []).slice().reverse().find((p) => p.id === planId)
+    || getActiveRecoveryPlan(u)
+    || (u.recoveryPlans || [])[u.recoveryPlans!.length - 1];
+  if (!plan) return;
+  const kit = getRecoveryKit(plan.setbackType);
+  const after = calculateStock(u).price;
+  const prog = getRecoveryProgress(plan);
+  const modal = createModal(SETBACK_TITLES[plan.setbackType] || '🌱 恢复期', kit.empathy);
+  const delta = after - plan.indexBefore;
+  modal.querySelector('.modal-body')!.innerHTML = `
+    <div style="display:flex;gap:10px;align-items:center;padding:12px 14px;background:var(--surface-softer);border-radius:12px;margin-bottom:14px;">
+      <div style="font-size:22px">${delta >= 0 ? '🌤️' : '🌧️'}</div>
+      <div style="flex:1;">
+        <div style="font-size:12px;color:var(--text-muted);">记录时成长指数</div>
+        <div style="font-weight:bold;font-size:15px;">${plan.indexBefore.toFixed(0)} 点 <span style="color:var(--text-muted);font-weight:normal;font-size:12px;">→ 此刻 ${after.toFixed(0)} 点</span></div>
+      </div>
+      <div style="text-align:right;">
+        <div style="font-size:12px;color:var(--text-muted);">恢复进度</div>
+        <div style="font-weight:bold;color:#C9936A;">${prog.done}/${prog.total}</div>
+      </div>
+    </div>
+    <div style="height:8px;background:var(--surface-softer);border-radius:99px;overflow:hidden;margin-bottom:16px;">
+      <div style="height:100%;width:${prog.pct}%;background:linear-gradient(90deg,#E8B88A,#5B9A6F);border-radius:99px;transition:width .4s;"></div>
+    </div>
+
+    <div style="font-size:13px;font-weight:bold;margin-bottom:8px;">⏱️ 现在就做（60 秒）</div>
+    <div onclick="toggleRecoveryInstant('${plan.id}')" style="display:flex;gap:10px;align-items:flex-start;padding:14px;border-radius:12px;margin-bottom:16px;cursor:pointer;border:1.5px solid ${plan.instantDone ? '#5B9A6F' : 'rgba(201,147,106,0.45)'};background:${plan.instantDone ? 'rgba(91,154,111,0.10)' : 'rgba(255,138,76,0.06)'};">
+      <div style="width:22px;height:22px;border-radius:50%;border:2px solid ${plan.instantDone ? '#5B9A6F' : '#C9936A'};flex-shrink:0;display:flex;align-items:center;justify-content:center;color:#5B9A6F;font-size:13px;font-weight:bold;">${plan.instantDone ? '✓' : ''}</div>
+      <div style="flex:1;">
+        <div style="font-size:13.5px;line-height:1.7;${plan.instantDone ? 'text-decoration:line-through;color:var(--text-muted);' : ''}">${esc(plan.instantText)}</div>
+        ${plan.instantDone ? `<div style="font-size:12px;color:#5B9A6F;margin-top:6px;">${esc(kit.instantCheer)}</div>` : '<div style="font-size:11px;color:var(--text-muted);margin-top:6px;">点一下这个卡片，做完就打勾</div>'}
+      </div>
+    </div>
+
+    <div style="font-size:13px;font-weight:bold;margin-bottom:8px;">🌱 接下来的恢复期（按自己的节奏来）</div>
+    <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:16px;">
+      ${plan.tasks.map((t) => `
+        <div onclick="toggleRecoveryTaskItem('${plan.id}','${t.id}')" style="display:flex;gap:10px;align-items:flex-start;padding:10px 12px;border-radius:10px;cursor:pointer;background:var(--surface-softer);">
+          <div style="width:20px;height:20px;border-radius:6px;border:2px solid ${t.done ? '#5B9A6F' : '#D9C7A8'};flex-shrink:0;display:flex;align-items:center;justify-content:center;color:#fff;font-size:12px;background:${t.done ? '#5B9A6F' : 'transparent'};">${t.done ? '✓' : ''}</div>
+          <div style="flex:1;font-size:13px;line-height:1.6;${t.done ? 'text-decoration:line-through;color:var(--text-muted);' : ''}">${esc(t.text)}</div>
+          <div style="font-size:11px;color:var(--text-muted);flex-shrink:0;">D${t.day}</div>
+        </div>`).join('')}
+    </div>
+
+    ${prog.finished ? `<div style="padding:14px;border-radius:12px;background:linear-gradient(135deg,rgba(91,154,111,0.14),rgba(255,138,76,0.10));font-size:13.5px;line-height:1.8;margin-bottom:14px;">🎉 ${esc(kit.completeCheer)}</div>` : ''}
+    <div class="form-actions">
+      <button class="dash-btn" onclick="closeModal()">今天先到这里</button>
+      <button class="btn-primary" onclick="closeModal()">我会慢慢做完</button>
+    </div>
+  `;
+  if (beforePrice !== undefined && delta < 0) {
+    showToast(`成长指数 ${beforePrice.toFixed(0)} → ${after.toFixed(0)}，退一步是为了喘口气`);
+  }
+}
+
+function toggleRecoveryInstant(planId: string) {
+  if (!user) return;
+  const plans = user.recoveryPlans || [];
+  const p = plans.find((x) => x.id === planId);
+  if (!p) return;
+  const next = toggleInstant(p);
+  user = upsertRecoveryPlan(user, next);
+  saveUser(user);
+  const wasFinished = !!next.completedAt;
+  showRecoveryPlanModal(planId);
+  renderRecoveryBanner(user);
+  if (next.instantDone) showToast('🌱 这一步做完，恢复就开始了');
+  if (wasFinished) celebrateRecovery();
+}
+
+function toggleRecoveryTaskItem(planId: string, taskId: string) {
+  if (!user) return;
+  const plans = user.recoveryPlans || [];
+  const p = plans.find((x) => x.id === planId);
+  if (!p) return;
+  const wasFinished = !!p.completedAt;
+  const next = toggleRecoveryTask(p, taskId);
+  user = upsertRecoveryPlan(user, next);
+  saveUser(user);
+  showRecoveryPlanModal(planId);
+  renderRecoveryBanner(user);
+  if (!wasFinished && next.completedAt) celebrateRecovery();
+}
+
+function celebrateRecovery() {
+  // 完成恢复计划：给一笔 0 元健康/自我关怀投入，让回暖在曲线上也被看见
+  if (!user) return;
+  showToast('🎉 恢复期任务全部完成，欢迎回到上坡路');
 }
 
 function showDetailModal() {
@@ -1998,6 +2179,36 @@ function renderBudgetCard(u: UserProfile) {
     <div style="display:flex;justify-content:space-between;font-size:11.5px;color:var(--text-muted);margin-top:8px;">
       <span>${st.overrun ? `已超 ${Math.round(-st.remaining!).toLocaleString()} ${unit}` : `还可投入 ${Math.round(st.remaining!).toLocaleString()} ${unit}`}</span>
       <span>日均 ${st.dailyAvg.toFixed(1)} ${unit} · ${deltaTxt}</span>
+    </div>`;
+}
+
+/** v1.5 低谷恢复计划横幅：有未完成计划时显示在曲线上方（调研 Q5 74.5% 第一刚需） */
+const RECOVERY_BANNER_META: Record<SetbackKind, { icon: string; name: string }> = {
+  jobloss: { icon: '💼', name: '工作变动' },
+  illness: { icon: '🏥', name: '健康风波' },
+  loss: { icon: '🌧️', name: '回落调整' },
+  stagnate: { icon: '🪫', name: '重新启动' },
+};
+function renderRecoveryBanner(u: UserProfile) {
+  const wrap = document.getElementById('recoveryBannerWrap');
+  if (!wrap) return;
+  const plan = getActiveRecoveryPlan(u);
+  if (!plan) { wrap.style.display = 'none'; wrap.innerHTML = ''; return; }
+  const prog = getRecoveryProgress(plan);
+  const meta = RECOVERY_BANNER_META[plan.setbackType] || { icon: '🌱', name: '恢复期' };
+  wrap.style.display = 'block';
+  wrap.innerHTML = `
+    <div class="dash-card" onclick="showRecoveryPlanModal('${plan.id}')" style="padding:14px 20px;cursor:pointer;border-left:4px solid #C9936A;">
+      <div style="display:flex;align-items:center;gap:14px;">
+        <div style="font-size:26px;">${meta.icon}</div>
+        <div style="flex:1;min-width:0;">
+          <div style="font-weight:bold;font-size:14.5px;margin-bottom:3px;">${meta.name}恢复期 · 已完成 ${prog.done}/${prog.total} 个小行动</div>
+          <div style="height:6px;background:var(--surface-softer);border-radius:99px;overflow:hidden;">
+            <div style="height:100%;width:${prog.pct}%;background:linear-gradient(90deg,#E8B88A,#5B9A6F);border-radius:99px;"></div>
+          </div>
+        </div>
+        <a style="font-size:13px;color:#C9936A;font-weight:bold;white-space:nowrap;cursor:pointer;">继续 →</a>
+      </div>
     </div>`;
 }
 

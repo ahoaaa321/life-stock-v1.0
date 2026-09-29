@@ -33,3 +33,5 @@ export * from './analytics';
 export * from './events';
 export * from './alerts';
 export * from './survey';
+export * from './recovery';
+export * from './smart-invest';

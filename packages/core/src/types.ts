@@ -169,6 +169,8 @@ export interface UserProfile {
   signature?: string;
   /** 强化调查表档案（真实履历，用于提升 K 线准确度） */
   enhancedSurvey?: EnhancedSurvey;
+  /** 低谷恢复计划列表（记录挫折后生成，调研 Q5 第一刚需 74.5%） */
+  recoveryPlans?: import('./recovery').RecoveryPlan[];
 
   /** 数据版本号，用于公式升级迁移 */
   version?: string;
