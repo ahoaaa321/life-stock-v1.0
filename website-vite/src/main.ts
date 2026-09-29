@@ -67,9 +67,14 @@ let user: UserProfile | null = null;
 let onboardingStep = 0;
 let selectedInvestType: InvestType = 'education';
 let onboardingData: Partial<UserProfile> = {};
+/** 问卷模式：quick=快速4问（先体验后补录），full=完整10问，resume=续填剩余问题 */
+let onboardingMode: 'quick' | 'full' | 'resume' = 'quick';
+/** resume 模式下待填写的字段列表 */
+let resumeFields: string[] = [];
 
 // 暴露给 HTML onclick
 (window as any).startOnboarding = startOnboarding;
+(window as any).resumeOnboarding = resumeOnboarding;
 (window as any).showAnchorModal = showAnchorModal;
 (window as any).showForecastModal = showForecastModal;
 (window as any).showShareModal = showShareModal;
@@ -133,17 +138,62 @@ function getVisibleSteps() {
   return onboardingSteps.filter((s) => s.field !== 'annualIncome' && s.field !== 'debtRatio');
 }
 
+/** 快速 4 问：年龄、学历、所在城市、年收入（未授权敏感项时替换为家庭条件） */
+function getQuickSteps() {
+  const fields = isSensitiveConsented()
+    ? ['age', 'education', 'region', 'annualIncome']
+    : ['age', 'education', 'region', 'income'];
+  return onboardingSteps.filter((s) => fields.includes(s.field));
+}
+
+/** 根据当前模式返回要走的步骤列表 */
+function getActiveSteps() {
+  if (onboardingMode === 'quick') return getQuickSteps();
+  if (onboardingMode === 'resume') return onboardingSteps.filter((s) => resumeFields.includes(s.field));
+  return getVisibleSteps();
+}
+
 // ============ 问卷流程 ============
-function startOnboarding() {
+/** mode: quick=快速4问（默认，先体验后补录），full=完整10问 */
+function startOnboarding(mode: 'quick' | 'full' = 'quick') {
   onboardingStep = 0;
   onboardingData = {};
+  onboardingMode = mode;
+  resumeFields = [];
   document.getElementById('landing')?.classList.add('hidden');
   showOnboardingModal();
 }
 
+/** 续填剩余问题（快速用户点击"完善画像"时调用） */
+function resumeOnboarding() {
+  if (!user) return;
+  // 计算已填写的字段，把没填的拿出来续填
+  const answered = new Set<string>(['age', 'education', 'region', 'area']);
+  if (user.annualIncome && user.annualIncome !== 100000) answered.add('annualIncome');
+  if (user.income) answered.add('income');
+  // 标记为默认值的字段视为未填
+  if (user.annualIncomeGrowth === 0.05 && !user.quickOnboarded === false) { /* keep default check below */ }
+  const allFields = ['annualIncomeGrowth', 'studyHours', 'healthScore', 'debtRatio', 'income', 'annualIncome'];
+  // quick 用户只缺 quick 以外的字段
+  resumeFields = onboardingSteps
+    .map((s) => s.field)
+    .filter((f) => !answered.has(f))
+    // 敏感未授权时跳过
+    .filter((f) => isSensitiveConsented() || (f !== 'annualIncome' && f !== 'debtRatio'));
+  if (resumeFields.length === 0) {
+    showToast('画像已经很完整啦 🌱');
+    return;
+  }
+  onboardingStep = 0;
+  onboardingData = {};
+  onboardingMode = 'resume';
+  showOnboardingModal();
+}
+
 function showOnboardingModal() {
-  const steps = getVisibleSteps();
+  const steps = getActiveSteps();
   const step = steps[onboardingStep];
+  const isLast = onboardingStep === steps.length - 1;
   const modal = createModal(step.title, step.desc);
   let body = '';
   if (step.type === 'number') {
@@ -157,13 +207,23 @@ function showOnboardingModal() {
       ${step.options!.map(o => `<label style="display:flex;align-items:center;gap:8px;padding:10px;background:var(--surface-softer);border-radius:10px;cursor:pointer;"><input type="checkbox" value="${o.value}"> ${o.label}</label>`).join('')}
     </div>`;
   }
-  body += `<div class="form-actions"><button class="btn-primary" onclick="submitOnboarding()">${onboardingStep === getVisibleSteps().length - 1 ? '生成我的成长曲线' : '下一步'}</button></div>`;
+  const lastBtnText = isLast
+    ? (onboardingMode === 'resume' ? '保存并更新曲线' : '生成我的成长曲线')
+    : '下一步';
+  body += `<div class="form-actions"><button class="btn-primary" onclick="submitOnboarding()">${lastBtnText}</button></div>`;
+  // 快速模式提供"跳过剩余，用默认值生成"入口
+  if (onboardingMode === 'quick' && !isLast) {
+    body += `<div style="text-align:center;margin-top:8px;"><a href="javascript:void(0)" onclick="skipOnboarding()" style="color:var(--text-muted);font-size:13px;text-decoration:underline;">先跳过，用默认值看看</a></div>`;
+  }
   modal.querySelector('.modal-body')!.innerHTML = body;
 }
 
 (window as any).submitOnboarding = submitOnboarding;
+(window as any).skipOnboarding = skipOnboarding;
+
 function submitOnboarding() {
-  const step = getVisibleSteps()[onboardingStep];
+  const steps = getActiveSteps();
+  const step = steps[onboardingStep];
   if (step.type === 'multi') {
     const checked = Array.from(document.querySelectorAll('#multiOptions input:checked')).map((i: any) => i.value);
     checked.forEach(f => { (onboardingData as any)[f] = true; });
@@ -173,42 +233,84 @@ function submitOnboarding() {
     else (onboardingData as any)[step.field] = val;
   }
   onboardingStep++;
-  if (onboardingStep >= getVisibleSteps().length) {
+  if (onboardingStep >= steps.length) {
     finishOnboarding();
   } else {
     showOnboardingModal();
   }
 }
 
+/** 快速模式下跳过剩余问题，用默认值直接生成 */
+function skipOnboarding() {
+  finishOnboarding();
+}
+
+/** 为快速/跳过模式补全默认画像字段 */
+function applyDefaults(data: Partial<UserProfile>): Partial<UserProfile> {
+  return {
+    income: (data.income as any) || 'avg',
+    annualIncome: isSensitiveConsented() ? (data.annualIncome as number) || 100000 : 100000,
+    annualIncomeGrowth: Number(data.annualIncomeGrowth ?? 0.05),
+    studyHours: Number(data.studyHours ?? 5),
+    healthScore: Number(data.healthScore ?? 75),
+    debtRatio: isSensitiveConsented() ? Number(data.debtRatio ?? 0) : 0,
+    hasJob: !!(data as any).hasJob,
+    salaryRaised: !!(data as any).salaryRaised,
+    hasLicense: !!(data as any).hasLicense,
+    marathon: !!(data as any).marathon,
+    married: !!(data as any).married,
+    hasHouse: !!(data as any).hasHouse,
+    hasChild: !!(data as any).hasChild,
+  };
+}
+
 function finishOnboarding() {
-  const age = onboardingData.age as number;
+  if (onboardingMode === 'resume' && user) {
+    // 续填：合并到现有 user，保留 investments/history 等
+    const patch = applyDefaults(onboardingData);
+    Object.assign(user, patch);
+    user.quickOnboarded = false;
+    // 历史不重算（保留用户已有投入），只更新画像系数
+    saveUser(user);
+    closeModal();
+    showDashboard();
+    showToast('✅ 画像已更新，曲线更准啦');
+    return;
+  }
+
+  const data = applyDefaults(onboardingData);
+  const age = Number(onboardingData.age);
   user = {
     age,
-    region: onboardingData.region as any,
+    region: (onboardingData.region as any) || 'tier2',
     area: 'urban',
-    income: onboardingData.income as any,
-    education: onboardingData.education as any,
+    income: data.income as any,
+    education: (onboardingData.education as any) || 'bachelor',
     birthYear: new Date().getFullYear() - age,
-    annualIncome: isSensitiveConsented() ? (onboardingData.annualIncome as number) : 100000,
-    annualIncomeGrowth: Number(onboardingData.annualIncomeGrowth ?? 0.05),
-    studyHours: Number(onboardingData.studyHours),
-    healthScore: Number(onboardingData.healthScore),
-    debtRatio: isSensitiveConsented() ? Number(onboardingData.debtRatio) : 0,
-    hasJob: !!(onboardingData as any).hasJob,
-    salaryRaised: !!(onboardingData as any).salaryRaised,
-    hasLicense: !!(onboardingData as any).hasLicense,
-    marathon: !!(onboardingData as any).marathon,
-    married: !!(onboardingData as any).married,
-    hasHouse: !!(onboardingData as any).hasHouse,
-    hasChild: !!(onboardingData as any).hasChild,
+    annualIncome: data.annualIncome as number,
+    annualIncomeGrowth: data.annualIncomeGrowth as number,
+    studyHours: data.studyHours as number,
+    healthScore: data.healthScore as number,
+    debtRatio: data.debtRatio as number,
+    hasJob: data.hasJob as boolean,
+    salaryRaised: data.salaryRaised as boolean,
+    hasLicense: data.hasLicense as boolean,
+    marathon: data.marathon as boolean,
+    married: data.married as boolean,
+    hasHouse: data.hasHouse as boolean,
+    hasChild: data.hasChild as boolean,
     totalInvest: 0,
     history: generateHistory({
-      age, region: onboardingData.region as any, area: 'urban',
-      income: onboardingData.income as any, education: onboardingData.education as any,
+      age,
+      region: (onboardingData.region as any) || 'tier2',
+      area: 'urban',
+      income: data.income as any,
+      education: (onboardingData.education as any) || 'bachelor',
     }),
     investments: [],
     familySupportCapital: 0,
     subjectiveWeight: 1.0,
+    quickOnboarded: onboardingMode === 'quick',
     version: FORMULA_VERSION,
   };
   saveUser(user);
@@ -300,6 +402,8 @@ function showDashboard() {
   renderTodoCard(u);
   renderBudgetCard(u);
   renderRecoveryBanner(u);
+  renderQuickOnboardNudge(u);
+  renderRecallBanner(u);
 }
 
 // ============ 记一笔投入 ============
@@ -875,29 +979,67 @@ function showShareModal() {
   if (!user) return;
   const u = user;
   const stock = calculateStock(u);
-  const roeLevel = stock.roe >= 15 ? '优秀' : stock.roe >= 8 ? '良好' : stock.roe >= 3 ? '一般' : '待提升';
-  const achieved = MILESTONES.filter(m => m.condition(u)).length;
-  const health = stock.effectiveHealth;
-  const healthLevel = health >= 80 ? '优秀' : health >= 60 ? '良好' : health >= 40 ? '一般' : '需关注';
-  const hours = u.studyHours;
-  const studyLevel = hours >= 8 ? '勤奋' : hours >= 3 ? '稳定' : hours >= 1 ? '一般' : '较少';
-  const modal = createModal('📤 分享', '生成专属指数卡片');
+  // 成长阶段称号（按年龄，无数字）
+  const stageTitle =
+    u.age < 18 ? '萌芽期' :
+    u.age < 23 ? '学生期' :
+    u.age < 29 ? '职场初期' :
+    u.age < 36 ? '职场上升期' :
+    u.age < 46 ? '成熟期' : '从容期';
+  // 挑一个最有分量的已达成里程碑（排除出生/入学等年龄自动触发的，优先用户主动达成的）
+  const activeMilestones = MILESTONES.filter((m) => m.condition(u));
+  const meaningful = activeMilestones.filter((m) =>
+    !['birth', 'school', 'middle', 'highschool', '30'].includes(m.id),
+  );
+  const picked = (meaningful.length > 0 ? meaningful : activeMilestones).slice(-1)[0];
+  // 黄历梗：按连续记录 / 状态
+  const streak = (() => {
+    const dates = new Set<string>();
+    (u.journals || []).forEach((j) => dates.add(dayKey(new Date(j.date))));
+    (u.investments || []).forEach((inv) => dates.add(dayKey(new Date(inv.date))));
+    let s = 0; const d = new Date();
+    while (dates.has(dayKey(d))) { s++; d.setDate(d.getDate() - 1); }
+    return s;
+  })();
+  let huangli: string;
+  if (picked && streak === 0) huangli = `今日宜庆祝 · ${picked.icon} ${picked.name}`;
+  else if (streak >= 7) huangli = `今日宜坚持 · 已连续 ${streak} 天`;
+  else if (streak >= 1) huangli = `今日宜投入 · 已连续 ${streak} 天`;
+  else if (stock.change < 0) huangli = '今日宜休整 · 退一步是为了喘口气';
+  else huangli = '今日宜动笔 · 哪怕只写一句话';
+
+  const modal = createModal('📤 分享', '生成一张不暴露数字的成长卡片');
   modal.querySelector('.modal-body')!.innerHTML = `
-    <div style="background:linear-gradient(135deg,#ffb36b,#ff8a4c 60%,#f2702e);padding:24px;border-radius:16px;text-align:center;color:#fff;box-shadow:0 12px 32px rgba(255,138,76,0.28);">
-      <div style="font-size:26px;margin-bottom:4px;">${u.avatar || '🌱'}</div>
-      <div style="font-size:13px;color:rgba(255,255,255,0.95);font-weight:bold;margin-bottom:2px;">${u.nickname ? esc(u.nickname) + ' 的' : ''}${u.indexName ? esc(u.indexName) : '成长指数'}</div>
-      <div style="font-size:11px;color:rgba(255,255,255,0.75);margin-bottom:10px;letter-spacing:1px;">今日宜长进 · 成长指数手账${u.signature ? ' · ' + esc(u.signature) : ''}</div>
-      <div style="font-size:42px;font-weight:bold;color:#fff;">${Math.round(stock.price)} 点</div>
-      <div style="color:rgba(255,255,255,0.92);margin-bottom:16px;">${stock.change >= 0 ? '+' : ''}${stock.change}%</div>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
-        <div><div style="font-size:11px;color:rgba(255,255,255,0.75)">成长效率</div><div style="font-weight:bold;color:#fff">${roeLevel}</div></div>
-        <div><div style="font-size:11px;color:rgba(255,255,255,0.75)">里程碑</div><div style="font-weight:bold;color:#fff">${achieved}/${MILESTONES.length}</div></div>
-        <div><div style="font-size:11px;color:rgba(255,255,255,0.75)">健康等级</div><div style="font-weight:bold;color:#fff">${healthLevel}</div></div>
-        <div><div style="font-size:11px;color:rgba(255,255,255,0.75)">学习习惯</div><div style="font-weight:bold;color:#fff">${studyLevel}</div></div>
+    <div style="background:linear-gradient(160deg,#FFE8D6 0%,#FFD9BE 40%,#FFC9A8 100%);padding:28px 24px;border-radius:20px;text-align:center;color:#4A3B2A;box-shadow:0 16px 40px rgba(255,138,76,0.28);max-width:360px;margin:0 auto;aspect-ratio: 9/16;display:flex;flex-direction:column;justify-content:space-between;">
+      <div>
+        <div style="font-size:13px;color:#A8734D;letter-spacing:3px;font-weight:600;">今日宜长进</div>
+        <div style="font-size:11px;color:#C9936A;margin-top:4px;letter-spacing:1px;">成长指数手账</div>
       </div>
-      <div style="margin-top:16px;font-size:11px;color:rgba(255,255,255,0.85);">成长没有标准答案，每一步都算数</div>
-      <div style="margin-top:8px;font-size:10px;color:rgba(255,255,255,0.55);">数值为模型估算，仅供自我观察，不构成任何建议</div>
+
+      <div style="flex:1;display:flex;flex-direction:column;justify-content:center;gap:18px;">
+        <div style="font-size:56px;line-height:1;">${u.avatar || '🌱'}</div>
+        <div>
+          <div style="font-size:12px;color:#A8734D;margin-bottom:6px;">我的成长阶段</div>
+          <div style="font-size:30px;font-weight:bold;color:#4A3B2A;letter-spacing:2px;">${stageTitle}</div>
+        </div>
+        <div style="background:rgba(255,255,255,0.5);border-radius:14px;padding:14px 16px;margin:0 10px;">
+          <div style="font-size:12px;color:#A8734D;margin-bottom:6px;">已达成的长进</div>
+          <div style="font-size:18px;font-weight:600;color:#4A3B2A;">
+            ${picked ? `${picked.icon} ${picked.name}` : '正在路上'}
+          </div>
+          ${activeMilestones.length > 1 ? `<div style="font-size:11px;color:#A8734D;margin-top:6px;">还有 ${activeMilestones.length - 1} 个里程碑静静发光</div>` : ''}
+        </div>
+        <div style="background:rgba(91,154,111,0.12);border-radius:12px;padding:12px 16px;margin:0 10px;border:1px dashed rgba(91,154,111,0.4);">
+          <div style="font-size:15px;font-weight:600;color:#5B9A6F;">${huangli}</div>
+        </div>
+      </div>
+
+      <div>
+        <div style="font-size:11px;color:#A8734D;line-height:1.7;">成长没有标准答案<br>每一步都算数</div>
+        <div style="font-size:9px;color:#C9936A;margin-top:8px;">本卡片不包含任何个人数值 · 仅供自我观察</div>
+      </div>
     </div>
+    <div style="text-align:center;margin-top:14px;font-size:12px;color:var(--text-muted);">长按或截图即可保存分享</div>
   `;
 }
 
@@ -1363,6 +1505,41 @@ function renderWeeklyStatus(u: UserProfile) {
   const tip = document.getElementById('weeklyTip');
   if (badge) badge.textContent = status.streakWeeks > 0 ? `🔥 连续 ${status.streakWeeks} 周` : '';
   if (tip) tip.textContent = status.message;
+
+  // P1-4 每周变化正反馈：本周 vs 上周记录笔数对比，只给正向/鼓励性反馈
+  const fb = document.getElementById('weeklyFeedback');
+  if (fb) {
+    const weekStart = (() => { const d = new Date(); const day = d.getDay(); const diff = day === 0 ? -6 : 1 - day; d.setDate(d.getDate() + diff); d.setHours(0,0,0,0); return d; })();
+    const lastStart = new Date(weekStart); lastStart.setDate(weekStart.getDate() - 7);
+    const inRange = (d: Date, s: Date, e: Date) => { const t = new Date(d).getTime(); return t >= s.getTime() && t < e.getTime(); };
+    const countIn = (s: Date, e: Date) => {
+      let c = 0;
+      (u.journals || []).forEach((j) => { if (inRange(new Date(j.date), s, e)) c++; });
+      (u.investments || []).forEach((inv) => { if (inRange(new Date(inv.date), s, e)) c++; });
+      return c;
+    };
+    const thisWeek = countIn(weekStart, new Date(weekStart.getTime() + 7*86400000));
+    const lastWeek = countIn(lastStart, weekStart);
+    let msg: string, color: string;
+    if (lastWeek === 0 && thisWeek > 0) {
+      msg = `🌱 这周已经动笔 ${thisWeek} 次，比上周更在状态了`;
+      color = 'var(--accent-green)';
+    } else if (thisWeek > lastWeek) {
+      msg = `📈 本周 ${thisWeek} 次记录，比上周多 ${thisWeek - lastWeek} 次，稳稳向上`;
+      color = 'var(--accent-green)';
+    } else if (thisWeek === lastWeek && thisWeek > 0) {
+      msg = `🌤️ 本周 ${thisWeek} 次记录，和上周一样稳，保持也是一种前进`;
+      color = 'var(--accent-yellow)';
+    } else if (thisWeek === 0 && lastWeek > 0) {
+      msg = `☕ 这周还没动笔，上周有 ${lastWeek} 次——今天写一句就好`;
+      color = 'var(--accent-orange)';
+    } else {
+      msg = `✍️ 写下第一句，本周的成长山坡就开始了`;
+      color = 'var(--accent-orange)';
+    }
+    fb.textContent = msg;
+    fb.style.color = color;
+  }
 }
 
 // ============ 回撤复盘 ============
@@ -2212,6 +2389,87 @@ function renderRecoveryBanner(u: UserProfile) {
     </div>`;
 }
 
+/** 快速 4 问用户的画像完善引导横幅（温和、可一键关闭） */
+let quickNudgeDismissed = false;
+function renderQuickOnboardNudge(u: UserProfile) {
+  const wrap = document.getElementById('quickOnboardNudge');
+  if (!wrap) return;
+  if (!u.quickOnboarded || quickNudgeDismissed) {
+    wrap.style.display = 'none';
+    wrap.innerHTML = '';
+    return;
+  }
+  wrap.style.display = 'block';
+  wrap.innerHTML = `
+    <div class="dash-card" style="padding:14px 20px;border-left:4px solid #5B9A6F;background:linear-gradient(135deg,rgba(91,154,111,0.10),rgba(255,138,76,0.06));">
+      <div style="display:flex;align-items:center;gap:14px;">
+        <div style="font-size:24px;">✏️</div>
+        <div style="flex:1;min-width:0;">
+          <div style="font-weight:bold;font-size:14px;margin-bottom:2px;">再补 6 个小问题，曲线会更像你</div>
+          <div style="font-size:12.5px;color:var(--text-secondary);">目前用的是通用估算值（收入增速、学习时长、健康、负债、里程碑…），随时可以回来改。</div>
+        </div>
+        <button onclick="resumeOnboarding()" class="btn-primary" style="padding:8px 16px;font-size:13px;white-space:nowrap;">去完善</button>
+        <a onclick="dismissQuickNudge()" style="font-size:18px;color:var(--text-muted);cursor:pointer;padding:0 6px;line-height:1;" title="暂时不">×</a>
+      </div>
+    </div>`;
+}
+(window as any).dismissQuickNudge = function () {
+  quickNudgeDismissed = true;
+  const wrap = document.getElementById('quickOnboardNudge');
+  if (wrap) { wrap.style.display = 'none'; wrap.innerHTML = ''; }
+};
+
+/** 计算最后一次记录（一句话 / 投入）距今天数；无记录返回 Infinity */
+function daysSinceLastRecord(u: UserProfile): number {
+  const dates: Date[] = [];
+  (u.journals || []).forEach((j) => dates.push(new Date(j.date)));
+  (u.investments || []).forEach((inv) => dates.push(new Date(inv.date)));
+  if (dates.length === 0) return Infinity;
+  const last = new Date(Math.max(...dates.map((d) => d.getTime())));
+  const diff = (Date.now() - last.getTime()) / (24 * 60 * 60 * 1000);
+  return Math.floor(diff);
+}
+
+/** 温和召回横幅：断更 3 天以上显示"今日宜动笔"，一键直达记一笔 */
+let recallDismissed = false;
+const RECALL_TIPS = [
+  '哪怕只写一句话，今天也没有白过 🌱',
+  '记录不是任务，是和自己的一次对话',
+  '退一步是为了喘口气，但别忘带上自己',
+  '今天的一小步，也是成长山坡上的一步',
+  '你已经走了这么远，今天也轻推自己一下吧',
+];
+function renderRecallBanner(u: UserProfile) {
+  const wrap = document.getElementById('recallBannerWrap');
+  if (!wrap) return;
+  const gap = daysSinceLastRecord(u);
+  if (gap < 3 || recallDismissed) {
+    wrap.style.display = 'none';
+    wrap.innerHTML = '';
+    return;
+  }
+  const tip = RECALL_TIPS[Math.floor(Math.random() * RECALL_TIPS.length)];
+  const label = gap === Infinity ? '还没有写下第一笔' : `已经 ${gap} 天没动笔了`;
+  wrap.style.display = 'block';
+  wrap.innerHTML = `
+    <div class="dash-card" style="padding:14px 20px;border-left:4px solid #FF8A4C;background:linear-gradient(135deg,rgba(255,138,76,0.10),rgba(255,179,107,0.06));">
+      <div style="display:flex;align-items:center;gap:14px;">
+        <div style="font-size:24px;">🖋️</div>
+        <div style="flex:1;min-width:0;">
+          <div style="font-weight:bold;font-size:14px;margin-bottom:2px;">今日宜动笔 · ${label}</div>
+          <div style="font-size:12.5px;color:var(--text-secondary);">${tip}</div>
+        </div>
+        <button onclick="document.getElementById('smartInvestInput')?.focus();document.getElementById('smartInvestInput')?.scrollIntoView({behavior:'smooth',block:'center'});" class="btn-primary" style="padding:8px 16px;font-size:13px;white-space:nowrap;">记一笔</button>
+        <a onclick="dismissRecall()" style="font-size:18px;color:var(--text-muted);cursor:pointer;padding:0 6px;line-height:1;" title="今天先不">×</a>
+      </div>
+    </div>`;
+}
+(window as any).dismissRecall = function () {
+  recallDismissed = true;
+  const wrap = document.getElementById('recallBannerWrap');
+  if (wrap) { wrap.style.display = 'none'; wrap.innerHTML = ''; }
+};
+
 (window as any).showBudgetModal = showBudgetModal;
 function showBudgetModal() {
   if (!user) return;
@@ -2780,11 +3038,23 @@ function renderTodayStrip(u: UserProfile, stock: StockSnapshotLike) {
   const doneHabits = habits.filter((x) => getHabitStatus(u, x).doneToday).length;
   const today = todayKey();
   const journalToday = (u.journals || []).some((j) => dayKey(new Date(j.date)) === today);
+  const invToday = (u.investments || []).some((inv) => dayKey(new Date(inv.date)) === today);
+  const recordedToday = journalToday || invToday;
   const maxStreak = habits.reduce((m, x) => Math.max(m, getHabitStatus(u, x).streak), 0);
+  // 连续记录天数（含一句话与投入）
+  const recordStreak = (() => {
+    const dates = new Set<string>();
+    (u.journals || []).forEach((j) => dates.add(dayKey(new Date(j.date))));
+    (u.investments || []).forEach((inv) => dates.add(dayKey(new Date(inv.date))));
+    let s = 0;
+    const d = new Date();
+    while (dates.has(dayKey(d))) { s++; d.setDate(d.getDate() - 1); }
+    return s;
+  })();
   let cta: string;
   if (habits.length > 0 && doneHabits < habits.length) {
     cta = `<button class="strip-cta" onclick="document.getElementById('habitCard').scrollIntoView({behavior:'smooth',block:'center'})">去打卡 →</button>`;
-  } else if (!journalToday) {
+  } else if (!recordedToday) {
     cta = `<button class="strip-cta" onclick="document.getElementById('journalInput').scrollIntoView({behavior:'smooth',block:'center'});document.getElementById('journalInput').focus();">写一句 →</button>`;
   } else {
     cta = `<span class="strip-done">✨ 今天也在长进</span>`;
@@ -2799,7 +3069,8 @@ function renderTodayStrip(u: UserProfile, stock: StockSnapshotLike) {
     </div>
     <div class="strip-right">
       <span class="strip-chip ${habits.length > 0 && doneHabits === habits.length ? 'ok' : ''}">✅ 习惯 ${doneHabits}/${habits.length}</span>
-      <span class="strip-chip ${journalToday ? 'ok' : ''}">${journalToday ? '📝 已记录' : '📝 未记录'}</span>
+      <span class="strip-chip ${recordedToday ? 'ok' : ''}">${recordedToday ? '📝 已记录' : '📝 未记录'}</span>
+      ${recordStreak > 0 ? `<span class="strip-chip fire">🔥 连续 ${recordStreak} 天</span>` : ''}
       ${maxStreak > 0 ? `<span class="strip-chip fire">🔥 ${maxStreak} 天</span>` : ''}
       <span class="strip-price" style="color:${stock.change >= 0 ? 'var(--accent-green)' : 'var(--accent-red)'}">${Math.round(stock.price)} 点 · ${stock.change >= 0 ? '+' : ''}${stock.change}%</span>
       ${cta}

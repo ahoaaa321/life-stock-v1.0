@@ -362,7 +362,7 @@
                 <button class="btn-primary" onclick="startOnboarding()">翻开我的成长手账</button>
             </div>
             <div class="features">
-                <div class="feature" onclick="startOnboarding()"><div class="feature-icon">🌅</div><h3>十笔画出自己</h3><p>关于年龄、家庭、健康、学习的几个简单问题，帮你画一张属于自己的成长画像</p></div>
+                <div class="feature" onclick="startOnboarding()"><div class="feature-icon">🌅</div><h3>四笔画出自己</h3><p>先答四个小问题，立刻看到你的成长曲线；其余的随时回来补，不急</p></div>
                 <div class="feature" onclick="startOnboarding()"><div class="feature-icon">🌱</div><h3>看见长进曲线</h3><p>那些看似不起眼的日常投入，汇聚起来就是一条向上的山坡——你比想象中更努力</p></div>
                 <div class="feature" onclick="startOnboarding()"><div class="feature-icon">🏆</div><h3>每一步都算数</h3><p>从拿到第一份工作到学会一项新技能，人生的每个节点，都是值得庆祝的里程碑</p></div>
                 <div class="feature" onclick="startOnboarding()"><div class="feature-icon">📋</div><h3>明明白白成长</h3><p>每一个数字都有迹可循。你可以校准、追问、调整——这是你的手账，你说了算</p></div>
@@ -424,6 +424,12 @@
                 <div id="todayStrip"></div>
             </div>
 
+            <!-- v1.6 先体验后补录：快速用户画像完善引导 -->
+            <div id="quickOnboardNudge" style="grid-column: span 2;display:none;"></div>
+
+            <!-- v1.6 温和召回：断更 3 天以上时显示"今日宜动笔" -->
+            <div id="recallBannerWrap" style="grid-column: span 2;display:none;"></div>
+
             <!-- v1.5 低谷恢复计划横幅（有未完成计划时显示） -->
             <div id="recoveryBannerWrap" style="grid-column: span 2;display:none;"></div>
 
@@ -460,7 +466,8 @@
             <!-- 一句话记录 + 每周一笔 -->
             <div class="dash-card" style="grid-column: span 2;">
                 <div class="dash-card-title">✨ 一句话记录 <span id="weeklyBadge" style="font-size:12px;font-weight:normal;color:var(--accent-yellow);"></span></div>
-                <div id="weeklyTip" style="font-size:12px;color:var(--text-muted);margin-bottom:10px;"></div>
+                <div id="weeklyTip" style="font-size:12px;color:var(--text-muted);margin-bottom:6px;"></div>
+                <div id="weeklyFeedback" style="font-size:12.5px;color:var(--accent-green);background:rgba(91,154,111,0.10);border-radius:8px;padding:8px 12px;margin-bottom:10px;line-height:1.6;"></div>
                 <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px;">
                     <span class="mood-btn" onclick="setJournalMood('great')" data-mood="great">😄</span>
                     <span class="mood-btn" onclick="setJournalMood('good')" data-mood="good">🙂</span>

@@ -172,6 +172,9 @@ export interface UserProfile {
   /** 低谷恢复计划列表（记录挫折后生成，调研 Q5 第一刚需 74.5%） */
   recoveryPlans?: import('./recovery').RecoveryPlan[];
 
+  /** 是否仅完成快速 4 问（先体验后补录）。true 时其余画像字段为默认值，可随时续填完善 */
+  quickOnboarded?: boolean;
+
   /** 数据版本号，用于公式升级迁移 */
   version?: string;
 }
