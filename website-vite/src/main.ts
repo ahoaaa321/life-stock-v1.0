@@ -167,14 +167,10 @@ function startOnboarding(mode: 'quick' | 'full' = 'quick') {
 /** 续填剩余问题（快速用户点击"完善画像"时调用） */
 function resumeOnboarding() {
   if (!user) return;
-  // 计算已填写的字段，把没填的拿出来续填
+  // 已填写的字段集合，其余视为待续填
   const answered = new Set<string>(['age', 'education', 'region', 'area']);
   if (user.annualIncome && user.annualIncome !== 100000) answered.add('annualIncome');
-  if (user.income) answered.add('income');
-  // 标记为默认值的字段视为未填
-  if (user.annualIncomeGrowth === 0.05 && !user.quickOnboarded === false) { /* keep default check below */ }
-  const allFields = ['annualIncomeGrowth', 'studyHours', 'healthScore', 'debtRatio', 'income', 'annualIncome'];
-  // quick 用户只缺 quick 以外的字段
+  if (user.income && user.income !== 'avg') answered.add('income');
   resumeFields = onboardingSteps
     .map((s) => s.field)
     .filter((f) => !answered.has(f))
@@ -194,7 +190,10 @@ function showOnboardingModal() {
   const steps = getActiveSteps();
   const step = steps[onboardingStep];
   const isLast = onboardingStep === steps.length - 1;
-  const modal = createModal(step.title, step.desc);
+  // 动态步骤编号（快速/续填模式下与原问卷题号解耦）
+  const stepLabel = `第 ${onboardingStep + 1} / ${steps.length} 步`;
+  const cleanTitle = step.title.replace(/^第\d+步：/, '');
+  const modal = createModal(`${stepLabel}：${cleanTitle}`, step.desc);
   let body = '';
   if (step.type === 'number') {
     body = `<input type="number" id="onboardInput" class="form-input" placeholder="${step.placeholder}" style="width:100%;padding:12px;border-radius:10px;background:var(--surface-soft);border:1px solid var(--border);color:var(--text-primary);font-size:16px;">`;
@@ -1321,6 +1320,8 @@ function resetAll() {
   if (confirm('确定要重置所有数据吗？')) {
     clearUser();
     user = null;
+    quickNudgeDismissed = false;
+    recallDismissed = false;
     document.getElementById('dashboard')?.classList.add('hidden');
     document.getElementById('landing')?.classList.remove('hidden');
   }
