@@ -175,6 +175,13 @@ export interface UserProfile {
   /** 是否仅完成快速 4 问（先体验后补录）。true 时其余画像字段为默认值，可随时续填完善 */
   quickOnboarded?: boolean;
 
+  /** 种子体验官：通过内测邀请码激活 */
+  seedTester?: boolean;
+  /** 激活使用的邀请码（如 GROWTH-01），用于识别种子来源 */
+  seedCode?: string;
+  /** 激活时间（ISO 字符串） */
+  seedActivatedAt?: string;
+
   /** 数据版本号，用于公式升级迁移 */
   version?: string;
 }

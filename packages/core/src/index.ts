@@ -35,3 +35,4 @@ export * from './alerts';
 export * from './survey';
 export * from './recovery';
 export * from './smart-invest';
+export * from './seed';

@@ -33,6 +33,7 @@ import {
   createRecoveryPlan, toggleInstant, toggleRecoveryTask, getRecoveryProgress,
   getActiveRecoveryPlan, upsertRecoveryPlan, getRecoveryKit,
   smartParseInvest,
+  redeemSeedCode,
 } from '@life-stock/core';
 import type { RecoveryPlan, SetbackKind } from '@life-stock/core';
 import {
@@ -71,6 +72,9 @@ let onboardingData: Partial<UserProfile> = {};
 let onboardingMode: 'quick' | 'full' | 'resume' = 'quick';
 /** resume 模式下待填写的字段列表 */
 let resumeFields: string[] = [];
+
+/** 种子体验官反馈问卷地址（创建腾讯问卷后替换此常量并重新部署） */
+const FEEDBACK_URL = 'https://wj.qq.com/';
 
 // 暴露给 HTML onclick
 (window as any).startOnboarding = startOnboarding;
@@ -403,6 +407,10 @@ function showDashboard() {
   renderRecoveryBanner(u);
   renderQuickOnboardNudge(u);
   renderRecallBanner(u);
+
+  // 种子体验官入口按钮状态
+  const seedBtn = document.getElementById('seedEntryBtn');
+  if (seedBtn) seedBtn.textContent = u.seedTester ? '🌱 种子体验官' : '🎟️ 内测邀请码';
 }
 
 // ============ 记一笔投入 ============
@@ -1325,6 +1333,64 @@ function resetAll() {
     document.getElementById('dashboard')?.classList.add('hidden');
     document.getElementById('landing')?.classList.remove('hidden');
   }
+}
+
+// ============ 种子体验官邀请码 ============
+(window as any).showSeedModal = showSeedModal;
+function showSeedModal() {
+  if (!user) return;
+  const modal = createModal('🎟️ 首批内测体验官', '邀请码来自内测邀请通知，仅 5 个名额');
+  if (user.seedTester) {
+    const date = user.seedActivatedAt
+      ? new Date(user.seedActivatedAt).toLocaleDateString('zh-CN')
+      : '';
+    modal.querySelector('.modal-body')!.innerHTML = `
+      <div style="text-align:center;padding:8px 0;">
+        <div style="font-size:48px;margin-bottom:8px;">🌱</div>
+        <div style="font-size:20px;font-weight:bold;margin-bottom:4px;">种子体验官</div>
+        <div style="font-size:13px;color:var(--text-secondary);margin-bottom:16px;">邀请码 ${user.seedCode}${date ? ` · ${date} 激活` : ''}</div>
+        <div style="background:linear-gradient(135deg,rgba(91,154,111,0.10),rgba(255,138,76,0.08));border-radius:12px;padding:14px;font-size:13px;color:var(--text-secondary);line-height:1.8;text-align:left;margin-bottom:16px;">
+          谢谢你陪「今日宜长进」长大 🙏<br>
+          体验 3~5 天后，欢迎花 3 分钟告诉我们哪里顺手、哪里别扭——你的每条意见都会直接影响下一个版本（包括微信小程序的开发优先级）。
+        </div>
+        <div class="form-actions">
+          <a class="btn-primary" href="${FEEDBACK_URL}" target="_blank" rel="noopener" style="text-decoration:none;display:inline-flex;align-items:center;justify-content:center;">💌 填写反馈问卷</a>
+        </div>
+      </div>`;
+    return;
+  }
+  modal.querySelector('.modal-body')!.innerHTML = `
+    <div style="font-size:13px;color:var(--text-secondary);line-height:1.8;margin-bottom:14px;">
+      如果你收到了内测邀请通知，在下方输入专属邀请码即可激活。激活后你的身份仅保存在本机，不会上传任何信息。
+    </div>
+    <input type="text" id="seedCodeInput" placeholder="如 GROWTH-01"
+           style="width:100%;padding:12px 14px;border-radius:10px;background:var(--surface-soft);border:1px solid var(--border);color:var(--text-primary);font-size:16px;letter-spacing:1px;text-transform:uppercase;"
+           onkeydown="if(event.key==='Enter')redeemCode()">
+    <div id="seedCodeError" style="font-size:12.5px;color:var(--accent-red);margin-top:8px;min-height:18px;"></div>
+    <div class="form-actions"><button class="btn-primary" onclick="redeemCode()">激活</button></div>`;
+  setTimeout(() => (document.getElementById('seedCodeInput') as HTMLInputElement)?.focus(), 100);
+}
+
+(window as any).redeemCode = redeemCode;
+function redeemCode() {
+  if (!user) return;
+  const raw = (document.getElementById('seedCodeInput') as HTMLInputElement).value;
+  const result = redeemSeedCode(user, raw);
+  const errEl = document.getElementById('seedCodeError');
+  if (!result.ok) {
+    if (errEl) {
+      errEl.textContent = result.reason === 'empty' ? '请输入邀请码'
+        : result.reason === 'invalid' ? '邀请码不对哦，检查一下大小写～（格式如 GROWTH-01）'
+        : '你已经是种子体验官啦 🌱';
+    }
+    return;
+  }
+  user = result.user;
+  saveUser(user);
+  closeModal();
+  showDashboard();
+  showToast('🌱 激活成功，欢迎成为种子体验官！');
+  setTimeout(() => showSeedModal(), 500);
 }
 
 // ============ 隐私政策 / 用户协议 ============
@@ -3064,7 +3130,7 @@ function renderTodayStrip(u: UserProfile, stock: StockSnapshotLike) {
     <div class="strip-left">
       <span class="strip-avatar">${u.avatar || '🌱'}</span>
       <div>
-        <div class="strip-greet">${greet}，${esc(u.nickname || '朋友')}</div>
+        <div class="strip-greet">${greet}，${esc(u.nickname || '朋友')}${u.seedTester ? ' <span style="font-size:11px;color:#5B9A6F;border:1px solid rgba(91,154,111,0.5);border-radius:99px;padding:1px 8px;margin-left:4px;vertical-align:middle;white-space:nowrap;">🌱 种子体验官</span>' : ''}</div>
         <div class="strip-sub">${now.getMonth() + 1}月${now.getDate()}日 ${week}${u.indexName ? ` · ${esc(u.indexName)}` : ''}${u.signature ? ` · ${esc(u.signature)}` : ''}</div>
       </div>
     </div>
